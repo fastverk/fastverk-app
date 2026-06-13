@@ -1,0 +1,13 @@
+"""fastverk — the menu-bar app (gRPC client to fvd). UI lands in P3."""
+
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_binary(
+    name = "fastverk",
+    srcs = glob(["src/**/*.rs"]),
+    edition = "2021",
+)
+
+exports_files(["Cargo.toml"])

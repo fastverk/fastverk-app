@@ -1,0 +1,14 @@
+[package]
+name = "fastverk"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "fastverk — the menu-bar app (tray + egui settings), a gRPC client to fvd. UI lands in P3."
+
+[[bin]]
+name = "fastverk"
+path = "src/main.rs"
+
+[dependencies]
