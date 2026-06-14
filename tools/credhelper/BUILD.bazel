@@ -1,0 +1,29 @@
+"""fastverk universal Bazel credential helper (config-driven, lifted from
+aion). Resolves auth headers from the connection registry + OS keychain
+via //app/core:fvkit. Replaces the gh-cred-helper.sh / glab shell scripts;
+wired into the generated ~/.bazelrc as a single unscoped
+--credential_helper.
+"""
+
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+load("@crates//:defs.bzl", "all_crate_deps")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_binary(
+    name = "cred_helper",
+    srcs = ["cred_helper.rs"],
+    edition = "2021",
+    deps = ["//app/core:fvkit"] + all_crate_deps(
+        normal = True,
+        package_name = "tools/credhelper",
+    ),
+)
+
+rust_test(
+    name = "cred_helper_test",
+    crate = ":cred_helper",
+    edition = "2021",
+)
+
+exports_files(["cred_helper.rs"])

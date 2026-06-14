@@ -1,0 +1,15 @@
+[package]
+name = "fastverk-cred-helper"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "fastverk universal Bazel credential helper: resolves auth headers from the connection registry + OS keychain."
+
+[[bin]]
+name = "fastverk-cred-helper"
+path = "cred_helper.rs"
+
+[dependencies]
+fvkit = { path = "../../app/core" }
