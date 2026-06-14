@@ -1,0 +1,6 @@
+# Shared app assets. The fastverk logo (the GitHub org avatar) is the
+# source for both the menu-bar tray icon (embedded via include_bytes in
+# //app/desktop) and the .app AppIcon.icns (//tools/macos).
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["fastverk-logo.png"])

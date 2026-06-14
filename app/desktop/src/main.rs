@@ -220,24 +220,14 @@ fn notify(title: &str, body: &str) {
     println!("[{title}] {body}");
 }
 
-/// A simple 32×32 RGBA fastverk mark (filled teal disc on transparency).
+/// The fastverk menu-bar icon — the GitHub org logo, decoded from the
+/// embedded PNG and resized for the menu bar.
 fn make_icon() -> Icon {
-    const S: u32 = 32;
-    let mut rgba = vec![0u8; (S * S * 4) as usize];
-    let center = (S as f32 - 1.0) / 2.0;
-    let radius = center;
-    for y in 0..S {
-        for x in 0..S {
-            let dx = x as f32 - center;
-            let dy = y as f32 - center;
-            if (dx * dx + dy * dy).sqrt() <= radius {
-                let i = ((y * S + x) * 4) as usize;
-                rgba[i] = 0x14;
-                rgba[i + 1] = 0xb8;
-                rgba[i + 2] = 0xa6;
-                rgba[i + 3] = 0xff;
-            }
-        }
-    }
-    Icon::from_rgba(rgba, S, S).expect("valid icon")
+    const LOGO: &[u8] = include_bytes!("../../../assets/fastverk-logo.png");
+    let rgba = image::load_from_memory(LOGO)
+        .expect("decode logo")
+        .resize_exact(32, 32, image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
+    let (w, h) = rgba.dimensions();
+    Icon::from_rgba(rgba.into_raw(), w, h).expect("valid icon")
 }

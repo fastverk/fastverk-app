@@ -17,6 +17,26 @@ exports_files([
     "entitlements.plist",
 ])
 
+# Build AppIcon.icns from the fastverk org logo via sips + iconutil.
+genrule(
+    name = "AppIcon",
+    srcs = ["//assets:fastverk-logo.png"],
+    outs = ["AppIcon.icns"],
+    cmd = """
+set -e
+SRC=$(location //assets:fastverk-logo.png)
+S="$$(mktemp -d)/icon.iconset"
+mkdir -p "$$S"
+for sz in 16 32 128 256 512; do
+  sips -z $$sz $$sz "$$SRC" --out "$$S/icon_$${sz}x$${sz}.png" >/dev/null
+  d=$$(( sz * 2 ))
+  sips -z $$d $$d "$$SRC" --out "$$S/icon_$${sz}x$${sz}@2x.png" >/dev/null
+done
+iconutil -c icns "$$S" -o $@
+""",
+    tags = ["local", "manual"],
+)
+
 macos_app_bundle(
     name = "fastverk_app",
     app_name = "fastverk",
@@ -26,9 +46,8 @@ macos_app_bundle(
         "//app/settings:fastverk-settings": "fastverk-settings",
         "//tools/credhelper:cred_helper": "fastverk-cred-helper",
     },
+    icon = ":AppIcon",
     plist = ":Info.plist",
-    # TODO: add a generated AppIcon.icns (icon = ":AppIcon.icns"); the tray
-    # icon is drawn in-code, so a Finder icon is cosmetic for now.
 )
 
 macos_dmg(

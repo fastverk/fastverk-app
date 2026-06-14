@@ -17,3 +17,4 @@ tao.workspace = true
 tray-icon.workspace = true
 fvkit = { path = "../core" }
 tokio.workspace = true
+image.workspace = true

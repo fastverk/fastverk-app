@@ -12,6 +12,8 @@ package(default_visibility = ["//visibility:public"])
 rust_binary(
     name = "fastverk",
     srcs = glob(["src/**/*.rs"]),
+    # Embedded by include_bytes! for the tray icon.
+    compile_data = ["//assets:fastverk-logo.png"],
     edition = "2021",
     deps = ["//app/core:fvkit"] + all_crate_deps(
         normal = True,
