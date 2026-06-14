@@ -1,0 +1,39 @@
+"""Package the fastverk menu-bar app into a macOS .app + .dmg.
+
+Build explicitly (these are `manual` + `local`):
+  bazel build //tools/macos:fastverk_dmg     # the installer .dmg
+  bazel build //tools/macos:fastverk_app     # just the bundled .app (tar)
+
+Ad-hoc signed by default; pass a Developer ID via the `identity` attr of
+fastverk_app once available. Notarization is gated (see release.yml).
+"""
+
+load("//tools/macos:defs.bzl", "macos_app_bundle", "macos_dmg")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "Info.plist",
+    "entitlements.plist",
+])
+
+macos_app_bundle(
+    name = "fastverk_app",
+    app_name = "fastverk",
+    binaries = {
+        "//app/desktop:fastverk": "fastverk",
+        "//app/daemon:fvd": "fvd",
+        "//app/settings:fastverk-settings": "fastverk-settings",
+        "//tools/credhelper:cred_helper": "fastverk-cred-helper",
+    },
+    plist = ":Info.plist",
+    # TODO: add a generated AppIcon.icns (icon = ":AppIcon.icns"); the tray
+    # icon is drawn in-code, so a Finder icon is cosmetic for now.
+)
+
+macos_dmg(
+    name = "fastverk_dmg",
+    app = ":fastverk_app",
+    app_name = "fastverk",
+    volname = "fastverk",
+)
