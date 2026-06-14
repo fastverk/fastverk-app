@@ -15,3 +15,5 @@ path = "src/main.rs"
 anyhow.workspace = true
 tao.workspace = true
 tray-icon.workspace = true
+fvkit = { path = "../core" }
+tokio.workspace = true

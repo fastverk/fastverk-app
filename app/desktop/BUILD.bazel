@@ -13,7 +13,7 @@ rust_binary(
     name = "fastverk",
     srcs = glob(["src/**/*.rs"]),
     edition = "2021",
-    deps = all_crate_deps(
+    deps = ["//app/core:fvkit"] + all_crate_deps(
         normal = True,
         package_name = "app/desktop",
     ),

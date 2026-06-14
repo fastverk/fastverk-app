@@ -1,17 +1,28 @@
 //! `fastverk` — the menu-bar application.
 //!
-//! A `tao` event loop hosts a `tray-icon` status item with a `muda` menu
-//! (re-exported as `tray_icon::menu`). Menu actions will drive the `fvd`
-//! daemon over its Unix socket; this first cut stands up the visible tray
-//! + menu (Quit works), with the fvd client + egui settings windows
-//! landing next.
+//! A `tao` event loop hosts a `tray-icon` status item with a `muda` menu.
+//! Menu actions are forwarded to a background worker thread that talks to
+//! the `fvd` daemon over its Unix socket (`fvkit::ipc`, autostarting fvd
+//! if needed) and reports results as macOS notifications. The egui
+//! settings windows (Connections / Volumes / Bazelrc) land next; for now
+//! Connections/Volumes route through Status-style summaries.
+
+use std::sync::mpsc::{self, Sender};
 
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-/// Events forwarded from the global tray/menu channels into the tao loop.
+use fvkit::proto::{GetStatusRequest, MaintainNowRequest};
+
+/// Work the background thread performs against fvd.
+enum Cmd {
+    Status,
+    Maintain,
+    CheckUpdate,
+}
+
 enum UserEvent {
     Menu(MenuEvent),
     #[allow(dead_code)]
@@ -19,13 +30,27 @@ enum UserEvent {
 }
 
 fn main() {
-    // (Dock-icon hiding — LSUIElement / Accessory activation policy — comes
-    // with the .app bundle's Info.plist in packaging; not needed to show the
-    // status item.)
+    // Background worker: owns a tokio runtime, talks to fvd per command.
+    let (tx, rx) = mpsc::channel::<Cmd>();
+    std::thread::spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                notify("fastverk", &format!("runtime error: {e}"));
+                return;
+            }
+        };
+        for cmd in rx {
+            rt.block_on(handle(cmd));
+        }
+    });
+
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
 
-    // tray-icon + muda deliver clicks on global channels; forward them into
-    // the tao loop (via the proxy) so it wakes and we handle them in one place.
+    // Forward muda + tray clicks into the tao loop so it wakes.
     let menu_proxy = event_loop.create_proxy();
     MenuEvent::set_event_handler(Some(move |e| {
         let _ = menu_proxy.send_event(UserEvent::Menu(e));
@@ -35,7 +60,6 @@ fn main() {
         let _ = tray_proxy.send_event(UserEvent::Tray(e));
     }));
 
-    // Build the menu.
     let menu = Menu::new();
     let status_i = MenuItem::new("Status", true, None);
     let connections_i = MenuItem::new("Connections…", true, None);
@@ -57,9 +81,9 @@ fn main() {
     let quit_id = quit_i.id().clone();
     let status_id = status_i.id().clone();
     let maintain_id = maintain_i.id().clone();
+    let updates_id = updates_i.id().clone();
 
     let icon = make_icon();
-    // The tray must be created after the event loop is running (macOS).
     let mut tray: Option<TrayIcon> = None;
 
     event_loop.run(move |event, _target, control_flow| {
@@ -78,19 +102,102 @@ fn main() {
             }
             Event::UserEvent(UserEvent::Menu(e)) => {
                 if e.id == quit_id {
-                    // Drop the status item before exiting so it disappears.
                     tray.take();
                     *control_flow = ControlFlow::Exit;
                 } else if e.id == status_id {
-                    println!("fastverk: Status (fvd client wiring is next)");
+                    send(&tx, Cmd::Status);
                 } else if e.id == maintain_id {
-                    println!("fastverk: Run maintenance (fvd client wiring is next)");
+                    send(&tx, Cmd::Maintain);
+                } else if e.id == updates_id {
+                    send(&tx, Cmd::CheckUpdate);
                 }
+                // Connections…/Volumes… open egui windows in the next step.
             }
             Event::UserEvent(UserEvent::Tray(_)) => {}
             _ => {}
         }
     });
+}
+
+fn send(tx: &Sender<Cmd>, cmd: Cmd) {
+    if tx.send(cmd).is_err() {
+        notify("fastverk", "background worker is gone");
+    }
+}
+
+/// Run one fvd command and surface the result as a notification.
+async fn handle(cmd: Cmd) {
+    let mut client = match fvkit::ipc::connect_default().await {
+        Ok(c) => c,
+        Err(e) => {
+            notify("fastverk", &format!("can't reach fvd: {e}"));
+            return;
+        }
+    };
+    match cmd {
+        Cmd::Status => match client.get_status(GetStatusRequest {}).await {
+            Ok(r) => {
+                let s = r.into_inner();
+                notify(
+                    "fastverk",
+                    &format!(
+                        "fvd v{} · {} connection(s) · {} volume(s)",
+                        s.version,
+                        s.connection_count,
+                        s.volumes.len()
+                    ),
+                );
+            }
+            Err(e) => notify("fastverk", &format!("status failed: {}", e.message())),
+        },
+        Cmd::Maintain => match client
+            .maintain_now(MaintainNowRequest {
+                validate_only: false,
+                only: vec![],
+            })
+            .await
+        {
+            Ok(r) => {
+                let report = r.into_inner();
+                let ok = report.tasks.iter().filter(|t| t.ok).count();
+                notify(
+                    "fastverk",
+                    &format!("maintenance done: {ok}/{} tasks ok", report.tasks.len()),
+                );
+            }
+            Err(e) => notify("fastverk", &format!("maintenance failed: {}", e.message())),
+        },
+        Cmd::CheckUpdate => match client
+            .check_update(fvkit::proto::CheckUpdateRequest {})
+            .await
+        {
+            Ok(r) => {
+                let u = r.into_inner();
+                let msg = if u.update_available {
+                    format!("update available: {}", u.latest_version)
+                } else {
+                    format!("up to date (v{})", u.current_version)
+                };
+                notify("fastverk", &msg);
+            }
+            Err(e) => notify("fastverk", &format!("update check failed: {}", e.message())),
+        },
+    }
+}
+
+/// Show a macOS notification (best-effort).
+fn notify(title: &str, body: &str) {
+    let script = format!(
+        "display notification \"{}\" with title \"{}\"",
+        body.replace('\\', "\\\\").replace('"', "\\\""),
+        title.replace('\\', "\\\\").replace('"', "\\\""),
+    );
+    let _ = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .status();
+    // Also log, useful when run from a terminal.
+    println!("[{title}] {body}");
 }
 
 /// A simple 32×32 RGBA fastverk mark (filled teal disc on transparency).
@@ -105,10 +212,10 @@ fn make_icon() -> Icon {
             let dy = y as f32 - center;
             if (dx * dx + dy * dy).sqrt() <= radius {
                 let i = ((y * S + x) * 4) as usize;
-                rgba[i] = 0x14; // R
-                rgba[i + 1] = 0xb8; // G
-                rgba[i + 2] = 0xa6; // B
-                rgba[i + 3] = 0xff; // A
+                rgba[i] = 0x14;
+                rgba[i + 1] = 0xb8;
+                rgba[i + 2] = 0xa6;
+                rgba[i + 3] = 0xff;
             }
         }
     }
