@@ -1,6 +1,11 @@
-"""fastverk — the menu-bar app (gRPC client to fvd). UI lands in P3."""
+"""fastverk — the menu-bar app (tao event loop + tray-icon/muda). UI is
+built via rules_rust + crate_universe like the rest of the workspace; the
+macOS framework links (AppKit/Foundation, etc.) come through the tao /
+tray-icon crates' build scripts.
+"""
 
 load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@crates//:defs.bzl", "all_crate_deps")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -8,6 +13,10 @@ rust_binary(
     name = "fastverk",
     srcs = glob(["src/**/*.rs"]),
     edition = "2021",
+    deps = all_crate_deps(
+        normal = True,
+        package_name = "app/desktop",
+    ),
 )
 
 exports_files(["Cargo.toml"])

@@ -5,10 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "fastverk — the menu-bar app (tray + egui settings), a gRPC client to fvd. UI lands in P3."
+description = "fastverk — the menu-bar app (tray + egui settings), a gRPC client to fvd."
 
 [[bin]]
 name = "fastverk"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
+tao.workspace = true
+tray-icon.workspace = true
