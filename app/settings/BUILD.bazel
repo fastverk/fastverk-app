@@ -1,0 +1,21 @@
+"""fastverk-settings — the egui/eframe settings window (an fvd gRPC
+client). Built via rules_rust + crate_universe; eframe's glow backend +
+winit pull the macOS framework links through their build scripts.
+"""
+
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@crates//:defs.bzl", "all_crate_deps")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_binary(
+    name = "fastverk-settings",
+    srcs = glob(["src/**/*.rs"]),
+    edition = "2021",
+    deps = ["//app/core:fvkit"] + all_crate_deps(
+        normal = True,
+        package_name = "app/settings",
+    ),
+)
+
+exports_files(["Cargo.toml"])

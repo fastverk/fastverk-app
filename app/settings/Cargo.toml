@@ -1,0 +1,18 @@
+[package]
+name = "fastverk-settings"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "fastverk settings window (egui/eframe), an fvd gRPC client. Launched by the menu-bar app."
+
+[[bin]]
+name = "fastverk-settings"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+eframe.workspace = true
+fvkit = { path = "../core" }
+tokio.workspace = true

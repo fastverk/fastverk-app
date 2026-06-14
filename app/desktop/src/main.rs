@@ -80,6 +80,8 @@ fn main() {
 
     let quit_id = quit_i.id().clone();
     let status_id = status_i.id().clone();
+    let connections_id = connections_i.id().clone();
+    let volumes_id = volumes_i.id().clone();
     let maintain_id = maintain_i.id().clone();
     let updates_id = updates_i.id().clone();
 
@@ -106,12 +108,15 @@ fn main() {
                     *control_flow = ControlFlow::Exit;
                 } else if e.id == status_id {
                     send(&tx, Cmd::Status);
+                } else if e.id == connections_id {
+                    spawn_settings("connections");
+                } else if e.id == volumes_id {
+                    spawn_settings("volumes");
                 } else if e.id == maintain_id {
                     send(&tx, Cmd::Maintain);
                 } else if e.id == updates_id {
                     send(&tx, Cmd::CheckUpdate);
                 }
-                // Connections…/Volumes… open egui windows in the next step.
             }
             Event::UserEvent(UserEvent::Tray(_)) => {}
             _ => {}
@@ -122,6 +127,21 @@ fn main() {
 fn send(tx: &Sender<Cmd>, cmd: Cmd) {
     if tx.send(cmd).is_err() {
         notify("fastverk", "background worker is gone");
+    }
+}
+
+/// Launch the standalone egui settings window on the given panel. The
+/// binary lives next to the tray (cargo target dir / app bundle).
+fn spawn_settings(panel: &str) {
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("fastverk-settings")))
+        .filter(|p| p.is_file());
+    match bin {
+        Some(bin) => {
+            let _ = std::process::Command::new(bin).arg(panel).spawn();
+        }
+        None => notify("fastverk", "settings app not found next to the tray binary"),
     }
 }
 
