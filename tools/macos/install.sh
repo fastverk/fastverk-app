@@ -21,6 +21,14 @@ command -v gh >/dev/null 2>&1 || {
     exit 1
 }
 
+# Resolve the release tag. While unsigned we publish prereleases, which the
+# GitHub "latest release" API excludes (so a no-tag download 404s). Take the
+# newest release including prereleases; override with an explicit tag arg:
+#   bash install.sh v0.0.2
+TAG="${1:-$(gh release list --repo "$REPO" --exclude-drafts --limit 1 \
+    --json tagName --jq '.[0].tagName')}"
+[ -n "$TAG" ] || { echo "fastverk: no releases found in $REPO" >&2; exit 1; }
+
 TMP="$(mktemp -d)"
 MNT=""
 cleanup() {
@@ -29,8 +37,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "→ downloading the latest fastverk .dmg…"
-gh release download --repo "$REPO" --pattern '*.dmg' --dir "$TMP" --clobber
+echo "→ downloading the $TAG fastverk .dmg…"
+gh release download "$TAG" --repo "$REPO" --pattern '*.dmg' --dir "$TMP" --clobber
 DMG="$(ls "$TMP"/*.dmg | head -1)"
 
 MNT="$(mktemp -d)"
@@ -44,6 +52,13 @@ MNT=""
 # Belt-and-suspenders (gh downloads aren't quarantined, but just in case).
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
+# Put the `fv` CLI on PATH for the quickstart (fv bootstrap / connect / sync).
+# current_exe() resolves the symlink back into the bundle, so fv still finds
+# its sibling fvd / cred-helper there.
+mkdir -p "$HOME/.local/bin"
+ln -sfn "$APP/Contents/MacOS/fv" "$HOME/.local/bin/fv"
+
 echo "✓ installed $APP"
 echo "  launch:        open -a fastverk        # a menu-bar icon appears"
-echo "  run at login:  $APP/Contents/MacOS/fv service install"
+echo "  cli:           fv bootstrap            # ~/.local/bin/fv (ensure it's on PATH)"
+echo "  run at login:  fv service install"

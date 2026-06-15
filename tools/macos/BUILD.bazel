@@ -44,6 +44,7 @@ macos_app_bundle(
         "//app/desktop:fastverk": "fastverk",
         "//app/daemon:fvd": "fvd",
         "//app/settings:fastverk-settings": "fastverk-settings",
+        "//cli/fv:fv": "fv",
         "//tools/credhelper:cred_helper": "fastverk-cred-helper",
     },
     icon = ":AppIcon",
