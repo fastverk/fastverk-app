@@ -64,6 +64,7 @@ fn main() {
     let status_i = MenuItem::new("Status", true, None);
     let connections_i = MenuItem::new("Connections…", true, None);
     let volumes_i = MenuItem::new("Volumes…", true, None);
+    let repos_i = MenuItem::new("Repos…", true, None);
     let maintain_i = MenuItem::new("Run maintenance", true, None);
     let updates_i = MenuItem::new("Check for updates", true, None);
     let quit_i = MenuItem::new("Quit fastverk", true, None);
@@ -72,6 +73,7 @@ fn main() {
         &PredefinedMenuItem::separator(),
         &connections_i,
         &volumes_i,
+        &repos_i,
         &maintain_i,
         &updates_i,
         &PredefinedMenuItem::separator(),
@@ -82,6 +84,7 @@ fn main() {
     let status_id = status_i.id().clone();
     let connections_id = connections_i.id().clone();
     let volumes_id = volumes_i.id().clone();
+    let repos_id = repos_i.id().clone();
     let maintain_id = maintain_i.id().clone();
     let updates_id = updates_i.id().clone();
 
@@ -112,6 +115,8 @@ fn main() {
                     spawn_settings("connections");
                 } else if e.id == volumes_id {
                     spawn_settings("volumes");
+                } else if e.id == repos_id {
+                    spawn_settings("repos");
                 } else if e.id == maintain_id {
                     send(&tx, Cmd::Maintain);
                 } else if e.id == updates_id {

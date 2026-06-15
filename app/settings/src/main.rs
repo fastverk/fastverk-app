@@ -14,8 +14,8 @@ use eframe::egui;
 use fvkit::proto::{
     BazelrcApplyRequest, BazelrcPreviewRequest, ConnectProviderRequest, Connection,
     DisconnectRequest, GetStatusRequest, ListConnectionsRequest, MaintainNowRequest,
-    MaintenanceReport, OAuthConfig, StatusResponse, VolumeCreateRequest, VolumeState,
-    VolumeStatusRequest,
+    MaintenanceReport, OAuthConfig, RepoSyncReport, ReposSyncRequest, StatusResponse, VolumeAudit,
+    VolumeAuditRequest, VolumeCreateRequest, VolumeDisposition,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,6 +23,7 @@ enum Tab {
     Status,
     Connections,
     Volumes,
+    Repos,
     Bazelrc,
     Maintenance,
 }
@@ -33,7 +34,9 @@ struct Shared {
     error: Option<String>,
     status: Option<StatusResponse>,
     connections: Vec<Connection>,
-    volumes: Vec<VolumeState>,
+    audits: Vec<VolumeAudit>,
+    repo_sources: Vec<String>,
+    repo_report: Option<RepoSyncReport>,
     bazelrc: String,
     maint: Option<MaintenanceReport>,
     log: Vec<String>,
@@ -49,6 +52,7 @@ enum Job {
     },
     Disconnect(String),
     VolumeCreate(String),
+    ReposSync { dry_run: bool },
     BazelrcApply { dry_run: bool },
     Maintain { dry_run: bool },
 }
@@ -78,6 +82,7 @@ impl eframe::App for App {
                 ui.selectable_value(&mut self.tab, Tab::Status, "Status");
                 ui.selectable_value(&mut self.tab, Tab::Connections, "Connections");
                 ui.selectable_value(&mut self.tab, Tab::Volumes, "Volumes");
+                ui.selectable_value(&mut self.tab, Tab::Repos, "Repos");
                 ui.selectable_value(&mut self.tab, Tab::Bazelrc, "Bazelrc");
                 ui.selectable_value(&mut self.tab, Tab::Maintenance, "Maintenance");
                 ui.separator();
@@ -99,6 +104,7 @@ impl eframe::App for App {
                 Tab::Status => self.status_panel(ui, &snap),
                 Tab::Connections => self.connections_panel(ui, &snap),
                 Tab::Volumes => self.volumes_panel(ui, &snap),
+                Tab::Repos => self.repos_panel(ui, &snap),
                 Tab::Bazelrc => self.bazelrc_panel(ui, &snap),
                 Tab::Maintenance => self.maintenance_panel(ui, &snap),
             }
@@ -181,21 +187,85 @@ impl App {
 
     fn volumes_panel(&mut self, ui: &mut egui::Ui, snap: &Shared) {
         ui.heading("Volumes");
-        for v in &snap.volumes {
-            let spec = v.spec.clone().unwrap_or_default();
+        ui.small(
+            "Audit-first: fastverk never reformats or mounts over existing data. \
+             It only creates genuinely-absent volumes and adopts/augments the rest in place.",
+        );
+        ui.add_space(4.0);
+        for a in &snap.audits {
+            let spec = a.state.as_ref().and_then(|s| s.spec.clone()).unwrap_or_default();
+            let state = a.state.clone().unwrap_or_default();
+            let (label, color) = disposition_badge(a.disposition);
             ui.horizontal(|ui| {
                 ui.monospace(format!("{:<8}", spec.id));
-                ui.label(if v.mounted { "mounted" } else { "absent" });
+                ui.colored_label(color, format!("{label:<8}"));
                 ui.label(&spec.mount_point);
-                ui.label(format!("{} free", human(v.free_bytes)));
+                if state.exists {
+                    ui.label(format!("{} free", human(state.free_bytes)));
+                }
             });
+            ui.small(&a.detail);
+        }
+        if snap.audits.is_empty() {
+            ui.label("(press Refresh)");
         }
         ui.separator();
-        if ui.button("Create missing volumes (prompts for admin)").clicked() {
+        if ui
+            .button("Provision volumes (audit-safe; prompts for admin)")
+            .on_hover_text("Creates only absent volumes; existing data is left untouched.")
+            .clicked()
+        {
             self.send(Job::VolumeCreate("all".to_string()));
         }
         for line in &snap.log {
             ui.small(line);
+        }
+    }
+
+    fn repos_panel(&mut self, ui: &mut egui::Ui, snap: &Shared) {
+        ui.heading("Repos");
+        ui.small("Org/group sources kept in sync with the repos volume + worktrees.");
+        ui.add_space(4.0);
+        if snap.repo_sources.is_empty() {
+            ui.label("(no sources configured)");
+        }
+        for s in &snap.repo_sources {
+            ui.monospace(s);
+        }
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui
+                .button("Sync (clone + pull)")
+                .on_hover_text("Clone missing repos and fast-forward clean clones.")
+                .clicked()
+            {
+                self.send(Job::ReposSync { dry_run: false });
+            }
+            if ui.button("Dry run").clicked() {
+                self.send(Job::ReposSync { dry_run: true });
+            }
+        });
+        if let Some(r) = &snap.repo_report {
+            ui.add_space(4.0);
+            let count = |a: &str| r.outcomes.iter().filter(|o| o.action == a).count();
+            let skipped = r
+                .outcomes
+                .iter()
+                .filter(|o| o.action.starts_with("skipped"))
+                .count();
+            ui.label(format!(
+                "cloned {}  updated {}  up-to-date {}  skipped {}  failed {}",
+                count("cloned"),
+                count("updated"),
+                count("up-to-date"),
+                skipped,
+                count("failed"),
+            ));
+            egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                for o in &r.outcomes {
+                    ui.small(format!("{:<10} {:<28} {}", o.action, o.name, o.detail));
+                }
+            });
         }
     }
 
@@ -238,6 +308,38 @@ impl App {
                 ));
             }
         }
+    }
+}
+
+/// The configured repo sources, as display strings (read directly from
+/// the fastverk config; the registry has no list-sources RPC).
+fn configured_sources() -> Vec<String> {
+    fvkit::config::Config::load()
+        .map(|cfg| {
+            cfg.sources
+                .iter()
+                .map(|s| {
+                    format!(
+                        "{:<8} {:<22} {}{}",
+                        s.forge,
+                        s.host,
+                        s.group,
+                        if s.include_archived { "  (incl. archived)" } else { "" }
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `(label, color)` for a volume disposition badge.
+fn disposition_badge(disposition: i32) -> (&'static str, egui::Color32) {
+    match VolumeDisposition::try_from(disposition) {
+        Ok(VolumeDisposition::Create) => ("CREATE", egui::Color32::from_rgb(0x40, 0xa0, 0xd0)),
+        Ok(VolumeDisposition::Adopt) => ("ADOPT", egui::Color32::from_rgb(0x40, 0xc0, 0x60)),
+        Ok(VolumeDisposition::Migrate) => ("MIGRATE", egui::Color32::from_rgb(0xd0, 0xa0, 0x40)),
+        Ok(VolumeDisposition::Conflict) => ("CONFLICT", egui::Color32::from_rgb(0xd0, 0x40, 0x40)),
+        _ => ("UNKNOWN", egui::Color32::GRAY),
     }
 }
 
@@ -297,20 +399,22 @@ async fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
                 .await?
                 .into_inner()
                 .connections;
-            let volumes = c
-                .volume_status(VolumeStatusRequest {})
+            let audits = c
+                .volume_audit(VolumeAuditRequest {})
                 .await?
                 .into_inner()
-                .volumes;
+                .audits;
             let bazelrc = c
                 .bazelrc_preview(BazelrcPreviewRequest {})
                 .await?
                 .into_inner()
                 .managed_block;
+            let repo_sources = configured_sources();
             let mut g = shared.lock().unwrap();
             g.status = Some(status);
             g.connections = connections;
-            g.volumes = volumes;
+            g.audits = audits;
+            g.repo_sources = repo_sources;
             g.bazelrc = bazelrc;
         }
         Job::Connect {
@@ -352,9 +456,25 @@ async fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
         }
         Job::VolumeCreate(id) => {
             let r = c.volume_create(VolumeCreateRequest { id }).await?.into_inner();
-            let mut g = shared.lock().unwrap();
-            g.volumes = r.volumes;
-            g.log.push(r.message);
+            shared.lock().unwrap().log.push(r.message);
+            // Re-audit so the panel reflects the post-provision state.
+            let audits = c
+                .volume_audit(VolumeAuditRequest {})
+                .await?
+                .into_inner()
+                .audits;
+            shared.lock().unwrap().audits = audits;
+        }
+        Job::ReposSync { dry_run } => {
+            let r = c
+                .repos_sync(ReposSyncRequest {
+                    pull: !dry_run,
+                    validate_only: dry_run,
+                    ..Default::default()
+                })
+                .await?
+                .into_inner();
+            shared.lock().unwrap().repo_report = Some(r);
         }
         Job::BazelrcApply { dry_run } => {
             let r = c
@@ -387,6 +507,7 @@ fn main() -> eframe::Result<()> {
     let tab = match std::env::args().nth(1).as_deref() {
         Some("connections") => Tab::Connections,
         Some("volumes") => Tab::Volumes,
+        Some("repos") => Tab::Repos,
         Some("bazelrc") => Tab::Bazelrc,
         Some("maintenance") => Tab::Maintenance,
         _ => Tab::Status,
