@@ -86,6 +86,20 @@ fn env_fallback(host: &str) -> Option<(String, String)> {
             }
         }
     }
+    // Self-hosted GitLab (gitlab.savvifi.com): the npm registry + git host
+    // for the savvi org. GitLab serves package/registry tokens via
+    // `Authorization: Bearer <token>` (NOT `Private-Token`). Accept the
+    // savvi-studio CI var (`AION_NPM_TOKEN`), a host-specific name, and the
+    // fastverk-canonical `GITLAB_TOKEN`, first non-empty wins.
+    if host == "gitlab.savvifi.com" || host.ends_with(".gitlab.savvifi.com") {
+        for key in ["AION_NPM_TOKEN", "GITLAB_SAVVIFI_TOKEN", "GITLAB_TOKEN"] {
+            if let Ok(v) = std::env::var(key) {
+                if !v.is_empty() {
+                    return Some(("Authorization".to_string(), format!("Bearer {v}")));
+                }
+            }
+        }
+    }
     None
 }
 
@@ -125,5 +139,47 @@ mod tests {
     #[test]
     fn escapes_json() {
         assert_eq!(json_escape(r#"a"b\c"#), r#"a\"b\\c"#);
+    }
+
+    // The gitlab.savvifi.com env_fallback rule: a request for the savvi
+    // GitLab host with a token in the env yields `Authorization: Bearer
+    // <token>` (proven correct vs the wrong `Private-Token`). The token
+    // value is never asserted on or printed — we only check the header
+    // name + `Bearer ` prefix so no secret can leak into test output.
+    //
+    // NOTE: serialized + env vars cleared so the CI env (which may export
+    // these for real fetches) can't influence the assertion. The keychain
+    // `resolve` path is a no-op here (no connection registered in tests),
+    // so `respond` exercises the env_fallback branch.
+    #[test]
+    fn gitlab_savvifi_env_fallback_is_bearer() {
+        // A clearly-fake, redactable placeholder — never a real token.
+        const FAKE: &str = "TEST_PLACEHOLDER_TOKEN";
+        let saved: Vec<(&str, Option<String>)> =
+            ["AION_NPM_TOKEN", "GITLAB_SAVVIFI_TOKEN", "GITLAB_TOKEN"]
+                .iter()
+                .map(|k| (*k, std::env::var(k).ok()))
+                .collect();
+        for (k, _) in &saved {
+            std::env::remove_var(k);
+        }
+        std::env::set_var("GITLAB_TOKEN", FAKE);
+
+        let out = respond(r#"{"uri":"https://gitlab.savvifi.com/api/v4/packages/npm/@aion/foo"}"#);
+        // Header is Authorization with a Bearer prefix; do not echo `out`
+        // (it embeds the token) — assert structurally instead.
+        assert!(
+            out.contains(r#""Authorization":["Bearer "#),
+            "expected an Authorization: Bearer header for gitlab.savvifi.com"
+        );
+        assert_ne!(out, EMPTY);
+
+        // Restore prior env so other tests are unaffected.
+        for (k, v) in saved {
+            match v {
+                Some(v) => std::env::set_var(k, v),
+                None => std::env::remove_var(k),
+            }
+        }
     }
 }
