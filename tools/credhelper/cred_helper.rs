@@ -42,14 +42,51 @@ fn respond(body: &str) -> String {
     let Some(uri) = fvkit::uri::parse_request_uri(body) else {
         return EMPTY.to_string();
     };
-    match fvkit::connections::resolve(&uri) {
-        Ok(Some(c)) => format!(
-            "{{\"headers\":{{\"{}\":[\"{}\"]}}}}",
-            json_escape(&c.header),
-            json_escape(&c.value),
-        ),
-        _ => EMPTY.to_string(),
+    // 1) A configured connection (keychain) wins — the interactive/local path.
+    if let Ok(Some(c)) = fvkit::connections::resolve(&uri) {
+        return headers(&c.header, &c.value);
     }
+    // 2) Env fallback for CI/automation, where there's no keychain: a small
+    //    host -> env table (as the original aion universal helper used).
+    //    Connections always take precedence over this.
+    if let Some((header, value)) = env_fallback(fvkit::uri::host_of(&uri)) {
+        return headers(&header, &value);
+    }
+    EMPTY.to_string()
+}
+
+fn headers(header: &str, value: &str) -> String {
+    format!(
+        "{{\"headers\":{{\"{}\":[\"{}\"]}}}}",
+        json_escape(header),
+        json_escape(value),
+    )
+}
+
+/// CI/automation token source: a host -> (header, env-var) table. Returns
+/// the header + value when a relevant env var is set and non-empty.
+fn env_fallback(host: &str) -> Option<(String, String)> {
+    let is_github = host == "github.com"
+        || host.ends_with(".github.com")
+        || host == "raw.githubusercontent.com"
+        || host == "codeload.github.com";
+    if is_github {
+        for key in ["GITHUB_TOKEN", "GH_TOKEN"] {
+            if let Ok(v) = std::env::var(key) {
+                if !v.is_empty() {
+                    return Some(("Authorization".to_string(), format!("Bearer {v}")));
+                }
+            }
+        }
+    }
+    if host == "remote.buildbuddy.io" {
+        if let Ok(v) = std::env::var("BUILDBUDDY_API_KEY") {
+            if !v.is_empty() {
+                return Some(("x-buildbuddy-api-key".to_string(), v));
+            }
+        }
+    }
+    None
 }
 
 /// JSON-escape a string for embedding as a JSON string value.
