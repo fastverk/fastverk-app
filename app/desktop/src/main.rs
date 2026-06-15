@@ -210,17 +210,9 @@ async fn handle(cmd: Cmd) {
     }
 }
 
-/// Show a macOS notification (best-effort).
+/// Show a desktop notification (best-effort), via the shared fvkit helper.
 fn notify(title: &str, body: &str) {
-    let script = format!(
-        "display notification \"{}\" with title \"{}\"",
-        body.replace('\\', "\\\\").replace('"', "\\\""),
-        title.replace('\\', "\\\\").replace('"', "\\\""),
-    );
-    let _ = std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .status();
+    fvkit::notify::send(title, body);
     // Also log, useful when run from a terminal.
     println!("[{title}] {body}");
 }
