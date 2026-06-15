@@ -43,6 +43,7 @@ enum Job {
     Refresh,
     Connect {
         provider: String,
+        host: String,
         client_id: String,
         api_key: String,
     },
@@ -57,6 +58,7 @@ struct App {
     shared: Arc<Mutex<Shared>>,
     jobs: Sender<Job>,
     connect_provider: String,
+    connect_host: String,
     connect_client_id: String,
     connect_api_key: String,
 }
@@ -148,6 +150,13 @@ impl App {
                     }
                 });
         });
+        if self.connect_provider != "buildbuddy" {
+            ui.horizontal(|ui| {
+                ui.label("host:");
+                ui.text_edit_singleline(&mut self.connect_host);
+            });
+            ui.small("blank = default (github.com / gitlab.savvifi.com). For enterprise / self-hosted, e.g. github.acme.com.");
+        }
         if self.connect_provider == "buildbuddy" {
             ui.horizontal(|ui| {
                 ui.label("API key:");
@@ -158,11 +167,12 @@ impl App {
                 ui.label("OAuth client id:");
                 ui.text_edit_singleline(&mut self.connect_client_id);
             });
-            ui.small("OAuth uses the device-code flow; watch for the fvd notification with the user code.");
+            ui.small("Blank uses the bundled id for known hosts; required for custom instances. Device-code flow; watch for the fvd notification with the user code.");
         }
         if ui.button("Connect").clicked() {
             self.send(Job::Connect {
                 provider: self.connect_provider.clone(),
+                host: self.connect_host.clone(),
                 client_id: self.connect_client_id.clone(),
                 api_key: self.connect_api_key.clone(),
             });
@@ -305,11 +315,13 @@ async fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
         }
         Job::Connect {
             provider,
+            host,
             client_id,
             api_key,
         } => {
             c.connect_provider(ConnectProviderRequest {
                 provider,
+                host,
                 oauth: if client_id.is_empty() {
                     None
                 } else {
@@ -391,7 +403,8 @@ fn main() -> eframe::Result<()> {
                 tab,
                 shared,
                 jobs,
-                connect_provider: "buildbuddy".to_string(),
+                connect_provider: "github".to_string(),
+                connect_host: String::new(),
                 connect_client_id: String::new(),
                 connect_api_key: String::new(),
             }))
