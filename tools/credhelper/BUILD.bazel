@@ -5,7 +5,6 @@ wired into the generated ~/.bazelrc as a single unscoped
 --credential_helper.
 """
 
-load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load", "oci_push")
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
 load("@crates//:defs.bzl", "all_crate_deps")
@@ -30,29 +29,31 @@ rust_test(
 
 exports_files(["cred_helper.rs"])
 
-# ─── Published OCI layer + image (Studio/aion build-base consumption) ──
+# ─── Release artifact: cred-helper layer tar (aion consumption) ───────
 #
-# These package the linux/amd64 `cred_helper` binary at the canonical
-# in-image path `/usr/local/bin/cred-helper` (mode 0755) so aion/infra's
-# baked, unscoped `--credential_helper=/usr/local/bin/cred-helper`
-# resolves the IDENTICAL fastverk binary in both CI/linux and the
-# build-base image — no per-repo copy.
+# The owner chose the MINIMAL path: fastverk publishes the cred-helper
+# binaries + this linux/amd64 layer tar as GitHub Release artifacts. There
+# is NO fastverk OCI image and NO fastverk base image — aion keeps and
+# owns its own base image and just drops the fastverk-published cred-helper
+# into the same `/usr/local/bin/cred-helper` (mode 0755).
 #
-# Build these with the linux/amd64 cross-compile so the binary inside the
+# This `pkg_tar` IS the layer-tar release artifact. aion can `http_file`
+# it and add it via `oci_image(tars=[...])`, OR `http_file` the raw
+# `cred-helper-linux-amd64` binary and `pkg_tar` it itself — aion's choice.
+#
+# Build it with the linux/amd64 cross-compile so the binary inside the
 # layer is an x86-64 ELF (the CI image arch), even when built on a mac:
 #
 #   bazel build //tools/credhelper:cred_helper_layer \
 #       --platforms=//tools/oci:linux_amd64
-#   bazel build //tools/credhelper:cred_helper_image \
-#       --platforms=//tools/oci:linux_amd64
 #
 # Verified: the produced binary is `ELF 64-bit LSB ... x86-64 ...
-# GNU/Linux` and the tar lists `./usr/local/bin/cred-helper`.
+# GNU/Linux` and the tar lists `usr/local/bin/cred-helper` (-rwxr-xr-x).
 #
-# PUBLISH IS DELIBERATELY NOT WIRED TO A CONCRETE REGISTRY YET — the
-# registry choice + push auth is an OWNER DECISION (ghcr.io/fastverk vs
-# registry.gitlab.savvifi.com). The `repository` below is a placeholder;
-# set it (and provide push creds in CI) before running :cred_helper_push.
+# Credentials are NEVER baked into this artifact — it carries only the
+# helper binary. Tokens are injected as environment variables per
+# consuming CI job (from the CI platform's encrypted secret store); the
+# helper reads them via its env_fallback path.
 
 # Layer: the cred-helper binary at the canonical /usr/local/bin path.
 # `remap_paths` rehomes the binary basename (`cred_helper`) to the path
@@ -69,45 +70,5 @@ pkg_tar(
     # basename lands under package_dir.
     strip_prefix = ".",
     mode = "0755",
-    visibility = ["//visibility:public"],
-)
-
-# Publish-ready single-layer OCI image carrying just the cred-helper at
-# /usr/local/bin/cred-helper, on the same distroless/cc base the service
-# images use. Studio can `oci_pull` this layer/image into the aion
-# build-base; the binary path stays /usr/local/bin/cred-helper.
-oci_image(
-    name = "cred_helper_image",
-    base = "//tools/oci:base_image",
-    tars = [":cred_helper_layer"],
-    annotations = {
-        # Filled in with the real ref once the registry is chosen.
-        "org.opencontainers.image.title": "fastverk-cred-helper",
-        "org.opencontainers.image.description": "fastverk universal Bazel credential helper at /usr/local/bin/cred-helper (linux/amd64).",
-    },
-    visibility = ["//visibility:public"],
-)
-
-oci_load(
-    name = "cred_helper_image_tarball",
-    image = ":cred_helper_image",
-    repo_tags = ["fastverk/cred-helper:latest"],
-    visibility = ["//visibility:public"],
-)
-
-# Registry push. TODO(owner): set `repository` to the chosen registry
-# (e.g. "ghcr.io/fastverk/cred-helper") and provide push auth in CI
-# before invoking. Tag at publish time:
-#   bazel run //tools/credhelper:cred_helper_push \
-#       --platforms=//tools/oci:linux_amd64 -- --tag "$GIT_SHA"
-#   bazel run //tools/credhelper:cred_helper_push \
-#       --platforms=//tools/oci:linux_amd64 -- --tag latest
-oci_push(
-    name = "cred_helper_push",
-    image = ":cred_helper_image",
-    # PLACEHOLDER — owner must set the real registry path. Left as a
-    # non-published value so an accidental `bazel run` can't push to a
-    # real registry without an explicit edit.
-    repository = "REPLACE_ME/fastverk/cred-helper",
     visibility = ["//visibility:public"],
 )
