@@ -24,19 +24,31 @@ use std::io::{Read, Write};
 const EMPTY: &str = "{\"headers\":{}}";
 
 fn main() {
-    // Lenient on the subcommand: only `get` does anything.
-    if std::env::args().nth(1).as_deref() != Some("get") {
-        println!("{EMPTY}");
-        return;
+    match std::env::args().nth(1).as_deref() {
+        Some("get") => {
+            let mut body = String::new();
+            // Consume stdin fully so Bazel's writer never sees EPIPE.
+            let _ = std::io::stdin().read_to_string(&mut body);
+            let out = respond(&body);
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            let _ = writeln!(handle, "{out}");
+        }
+        // `diagnose <uri>` — explain how the URI resolves: the matched
+        // connection, every secret ref tried + which source is present, and
+        // the header that would be sent. Reads NO secret values, so it's safe
+        // to run as a CI step to answer "which token does this pipeline
+        // actually use?" — the visibility the host-only `get` path never gave.
+        Some("diagnose") => {
+            let Some(uri) = std::env::args().nth(2).filter(|u| !u.is_empty()) else {
+                eprintln!("usage: cred-helper diagnose <uri>");
+                std::process::exit(2);
+            };
+            print!("{}", fvkit::connections::explain(&uri));
+        }
+        // Lenient: any other argv yields anonymous (matches the get-miss path).
+        _ => println!("{EMPTY}"),
     }
-    let mut body = String::new();
-    // Consume stdin fully so Bazel's writer never sees EPIPE.
-    let _ = std::io::stdin().read_to_string(&mut body);
-
-    let out = respond(&body);
-    let stdout = std::io::stdout();
-    let mut handle = stdout.lock();
-    let _ = writeln!(handle, "{out}");
 }
 
 fn respond(body: &str) -> String {
