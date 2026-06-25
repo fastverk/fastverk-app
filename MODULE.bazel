@@ -1,0 +1,94 @@
+# fastverk-app — the macOS desktop app (menu-bar tray + egui settings) and
+# the daemon-aware Bazel credential helper.
+#
+# Three crates: `fastverk` (app/desktop, the tao/tray-icon menu-bar binary),
+# `fastverk-settings` (app/settings, the eframe/egui settings window), and
+# `fastverk-cred-helper` (tools/credhelper, the universal Bazel credential
+# helper). All three are gRPC clients of the `fvd` daemon and build on the
+# `fvkit` core library.
+#
+# The fvkit dependency comes via the `fvkit` module (@fvkit//app/core:fvkit
+# and @fvkit//app/daemon:fvd), NOT the crate_universe — so `crate` uses
+# from_specs (third-party crates only) rather than from_cargo, which would
+# otherwise try to double-manage fvkit across the module boundary. This
+# mirrors how `wave` depends on `forge`.
+module(
+    name = "fastverk-app",
+    version = "0.0.1",
+)
+
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "rules_rust", version = "0.70.0")
+bazel_dep(name = "protobuf", version = "33.4")
+bazel_dep(name = "rules_pkg", version = "1.0.1")
+bazel_dep(name = "fvkit", version = "0.0.1")
+bazel_dep(name = "brand", version = "0.2.0")  # AppIcon + tray icon (package dep, no vendoring)
+
+# @brand generates its icons hermetically with Python (Pillow); register the
+# matching 3.12 toolchain so its pip wheels resolve when we consume the icons.
+bazel_dep(name = "rules_python", version = "1.7.0")
+
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(
+    is_default = True,
+    python_version = "3.12",
+)
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    versions = ["1.95.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+# Third-party crates only (fvkit is a module dep, above). Hand-listed via
+# from_specs so the crate_universe is independent of the Cargo.toml's fvkit
+# path dep (which is cargo/IDE-only). Versions/features mirror the original
+# fastverk workspace Cargo.toml.
+crate = use_extension(
+    "@rules_rust//crate_universe:extension.bzl",
+    "crate",
+    isolate = True,
+)
+crate.spec(
+    package = "anyhow",
+    version = "1.0",
+)
+crate.spec(
+    features = ["full"],
+    package = "tokio",
+    version = "1.40",
+)
+
+# Menu-bar app (app/desktop): tao event loop + tray-icon (re-exports muda
+# for the menu, so no separate menu dep / version skew).
+crate.spec(
+    package = "tao",
+    version = "0.30",
+)
+crate.spec(
+    package = "tray-icon",
+    version = "0.19",
+)
+
+# Settings window (app/settings): eframe/egui (glow backend, no wgpu).
+crate.spec(
+    package = "eframe",
+    version = "0.29",
+)
+
+# Decode the PNG logo into the tray icon's RGBA buffer.
+crate.spec(
+    default_features = False,
+    features = ["png"],
+    package = "image",
+    version = "0.25",
+)
+crate.from_specs(name = "crates")
+use_repo(crate, "crates")
+
+# Dev-only.
+bazel_dep(name = "rules_shell", version = "0.6.1", dev_dependency = True)

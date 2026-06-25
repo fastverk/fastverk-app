@@ -217,10 +217,10 @@ fn notify(title: &str, body: &str) {
     println!("[{title}] {body}");
 }
 
-/// The fastverk menu-bar icon — the GitHub org logo, decoded from the
+/// The fastverk menu-bar icon — the fastverk mark (lower variant) from @brand, decoded from the
 /// embedded PNG and resized for the menu bar.
 fn make_icon() -> Icon {
-    const LOGO: &[u8] = include_bytes!("../../../assets/fastverk-logo.png");
+    const LOGO: &[u8] = include_bytes!("../../../assets/tray-icon.png");
     let rgba = image::load_from_memory(LOGO)
         .expect("decode logo")
         .resize_exact(32, 32, image::imageops::FilterType::Lanczos3)

@@ -1,6 +1,13 @@
-# Shared app assets. The fastverk logo (the GitHub org avatar) is the
-# source for both the menu-bar tray icon (embedded via include_bytes in
-# //app/desktop) and the .app AppIcon.icns (//tools/macos).
+# App assets. Icons come from the brand module (@brand) as a package
+# dependency — generated at build time, never vendored, so they can't drift.
 package(default_visibility = ["//visibility:public"])
 
-exports_files(["fastverk-logo.png"])
+# Menu-bar tray icon: the lower mark variant (legible at small sizes),
+# embedded via include_bytes! in //app/desktop. The .app AppIcon.icns is
+# taken straight from @brand//icons in //tools/macos.
+genrule(
+    name = "tray-icon",
+    srcs = ["@brand//icons:fastverk_lower_64.png"],
+    outs = ["tray-icon.png"],
+    cmd = "cp $(location @brand//icons:fastverk_lower_64.png) $@",
+)

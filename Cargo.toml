@@ -1,0 +1,45 @@
+# fastverk-app — the macOS desktop app + the daemon-aware Bazel cred-helper.
+#
+# Three crates: `fastverk` (app/desktop, the menu-bar tray binary),
+# `fastverk-settings` (app/settings, the eframe/egui settings window), and
+# `fastverk-cred-helper` (tools/credhelper). All build with cargo (against a
+# checked-out sibling ../fvkit) and with Bazel (fvkit via the @fvkit module).
+#
+# Bazel is the primary build (see MODULE.bazel + the per-crate BUILD.bazel).
+# This Cargo workspace is for cargo / IDE iteration: the `fvkit` path dep
+# below only needs to resolve when the sibling `../fvkit` repo is checked
+# out next to this one — mirroring how `wave` points its cargo build at a
+# sibling `../forge`.
+[workspace]
+resolver = "2"
+members = [
+    "app/desktop",
+    "app/settings",
+    "tools/credhelper",
+]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.95.0"
+license = "MIT"
+repository = "https://github.com/fastverk/fastverk-app"
+
+[workspace.dependencies]
+anyhow = "1.0"
+tokio = { version = "1.40", features = ["full"] }
+# Menu-bar app (app/desktop): tao event loop + tray-icon (re-exports muda
+# for the menu, so no separate menu dep / version skew).
+tao = "0.30"
+tray-icon = "0.19"
+# Settings window (app/settings): eframe/egui (glow backend, no wgpu).
+eframe = "0.29"
+# Decode the PNG logo into the tray icon's RGBA buffer.
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Sibling fvkit module. Bazel resolves it as @fvkit//app/core:fvkit (a module
+# dep, NOT the crate_universe); this path dep is for cargo/IDE iteration
+# against a checked-out sibling. External cargo builds use the published
+# fvkit tag.
+fvkit = { path = "../fvkit/app/core" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

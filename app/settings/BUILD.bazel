@@ -1,10 +1,13 @@
 """fastverk-settings — the egui/eframe settings window (an fvd gRPC
 client). Built via rules_rust + crate_universe; eframe's glow backend +
 winit pull the macOS framework links through their build scripts.
+
+fvkit comes from the @fvkit module (@fvkit//app/core:fvkit), not the
+crate_universe — so third-party crates are hand-listed from the @crates
+from_specs repo (see MODULE.bazel), mirroring how wave depends on forge.
 """
 
 load("@rules_rust//rust:defs.bzl", "rust_binary")
-load("@crates//:defs.bzl", "all_crate_deps")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -12,10 +15,12 @@ rust_binary(
     name = "fastverk-settings",
     srcs = glob(["src/**/*.rs"]),
     edition = "2021",
-    deps = ["//app/core:fvkit"] + all_crate_deps(
-        normal = True,
-        package_name = "app/settings",
-    ),
+    deps = [
+        "@crates//:anyhow",
+        "@crates//:eframe",
+        "@crates//:tokio",
+        "@fvkit//app/core:fvkit",
+    ],
 )
 
 exports_files(["Cargo.toml"])

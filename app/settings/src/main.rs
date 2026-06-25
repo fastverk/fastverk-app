@@ -390,7 +390,12 @@ fn spawn_worker(shared: Arc<Mutex<Shared>>, ctx: egui::Context) -> Sender<Job> {
 }
 
 async fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
-    let mut c = fvkit::ipc::connect_default().await?;
+    // fvkit exposes its own `anyhow` across the module boundary; this crate's
+    // `anyhow` is a distinct crate (two isolated crate_universes), so we
+    // convert at the edge via Display rather than relying on a same-type `From`.
+    let mut c = fvkit::ipc::connect_default()
+        .await
+        .map_err(|e| anyhow::anyhow!("{e:#}"))?;
     match job {
         Job::Refresh => {
             let status = c.get_status(GetStatusRequest {}).await?.into_inner();

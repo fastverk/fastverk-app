@@ -7,18 +7,16 @@ wired into the generated ~/.bazelrc as a single unscoped
 
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
-load("@crates//:defs.bzl", "all_crate_deps")
 
 package(default_visibility = ["//visibility:public"])
 
+# fvkit comes from the @fvkit module (@fvkit//app/core:fvkit), not the
+# crate_universe. The helper has no third-party crate deps of its own.
 rust_binary(
     name = "cred_helper",
     srcs = ["cred_helper.rs"],
     edition = "2021",
-    deps = ["//app/core:fvkit"] + all_crate_deps(
-        normal = True,
-        package_name = "tools/credhelper",
-    ),
+    deps = ["@fvkit//app/core:fvkit"],
 )
 
 rust_test(
@@ -62,6 +60,7 @@ exports_files(["cred_helper.rs"])
 pkg_tar(
     name = "cred_helper_layer",
     srcs = [":cred_helper"],
+    mode = "0755",
     # Strip the rust_binary's package dir; place the file at the root
     # of the tar under the canonical install path.
     package_dir = "/usr/local/bin",
@@ -69,6 +68,5 @@ pkg_tar(
     # Drop the directory prefix from the rust_binary output so only the
     # basename lands under package_dir.
     strip_prefix = ".",
-    mode = "0755",
     visibility = ["//visibility:public"],
 )
