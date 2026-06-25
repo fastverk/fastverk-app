@@ -14,7 +14,7 @@
 # mirrors how `wave` depends on `forge`.
 module(
     name = "fastverk-app",
-    version = "0.0.1",
+    version = "0.0.2",
 )
 
 bazel_dep(name = "platforms", version = "1.0.0")
@@ -22,7 +22,7 @@ bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
-bazel_dep(name = "fvkit", version = "0.0.1")
+bazel_dep(name = "fvkit", version = "0.0.2")
 bazel_dep(name = "brand", version = "0.2.0")  # AppIcon + tray icon (package dep, no vendoring)
 
 # @brand generates its icons hermetically with Python (Pillow); register the
