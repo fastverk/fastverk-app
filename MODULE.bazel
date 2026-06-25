@@ -24,6 +24,38 @@ bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
 bazel_dep(name = "fvkit", version = "0.0.2")
 bazel_dep(name = "brand", version = "0.2.0")  # AppIcon + tray icon (package dep, no vendoring)
+bazel_dep(name = "meridian", version = "0.2.2")  # proto-driven UI framework: panel-bundle rule + Swift renderer (//swift:MeridianUI)
+
+# Native macOS UI: the SwiftUI Dashboard window (app/dashboard) is a meridian
+# renderer. rules_swift + rules_apple resolve from BCR (second registry in the
+# chain), so they are NOT vendored into the private fastverk registry. They pull
+# a compatible apple_support transitively (don't pin it — the 1.x/2.x skew).
+bazel_dep(name = "rules_swift", version = "3.6.1")
+bazel_dep(name = "rules_apple", version = "4.5.3")
+
+# apple_support is pulled transitively (rules_apple wants 2.2.0), but its CC
+# toolchain must be registered HERE in the root module so it outranks Bazel's
+# autoconf "local" toolchain for darwin host builds — otherwise rules_swift
+# fails with "Invalid target triple: local". Pin 2.2.0 to match rules_apple.
+bazel_dep(name = "apple_support", version = "2.2.0", repo_name = "build_bazel_apple_support")
+
+apple_cc = use_extension("@build_bazel_apple_support//crosstool:setup.bzl", "apple_cc_configure_extension")
+use_repo(apple_cc, "local_config_apple_cc_toolchains")
+
+register_toolchains("@local_config_apple_cc_toolchains//:all")
+
+# DEV OVERRIDE (commented): consume the local meridian working copy, which
+# carries the new `//swift:MeridianUI` renderer + `//proto:MeridianProto`.
+# Enable this (or publish meridian >= 0.2.2 with the Swift surface) to build
+# `//app/dashboard` once a full Xcode is installed. It is left OFF by default
+# because the local meridian MODULE's added Swift deps force a crate_universe
+# re-resolution; the registry meridian 0.2.1 (cached) is enough for the panel
+# bundle, and the dashboard's Swift target is Xcode-gated regardless.
+#
+# local_path_override(
+#     module_name = "meridian",
+#     path = "/Volumes/Workspace/fastverk/repos/meridian",
+# )
 
 # @brand generates its icons hermetically with Python (Pillow); register the
 # matching 3.12 toolchain so its pip wheels resolve when we consume the icons.
@@ -61,6 +93,13 @@ crate.spec(
     features = ["full"],
     package = "tokio",
     version = "1.40",
+)
+
+# JSON in/out for the `fvd-json` shim (tools/fvdjson): the SwiftUI Dashboard's
+# RpcInvoker speaks JSON; the shim emits snake_case proto JSON for it.
+crate.spec(
+    package = "serde_json",
+    version = "1.0",
 )
 
 # Menu-bar app (app/desktop): tao event loop + tray-icon (re-exports muda

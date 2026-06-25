@@ -1,0 +1,19 @@
+"""fastverk Dashboard panel bundle.
+
+Compiles panels.textproto -> panels.binpb (a wire-encoded
+meridian.ui.v1.PanelBundle) via meridian's panel_bundle rule. The binpb is
+staged into the .app Resources and decoded by the SwiftUI Dashboard at
+startup. The descriptors here target the fvd daemon (fastverk.v1.Fvd).
+"""
+
+load("@meridian//bazel:panel_bundle.bzl", "meridian_panel_bundle")
+
+package(default_visibility = ["//visibility:public"])
+
+meridian_panel_bundle(
+    name = "panels",
+    src = "panels.textproto",
+    # meridian's uiview_proto defines meridian.ui.v1.PanelBundle (the default
+    # --encode message) and its transitive imports.
+    proto = "@meridian//proto:uiview_proto",
+)

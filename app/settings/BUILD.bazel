@@ -1,6 +1,6 @@
-"""fastverk-settings — the egui/eframe settings window (an fvd gRPC
-client). Built via rules_rust + crate_universe; eframe's glow backend +
-winit pull the macOS framework links through their build scripts.
+"""fastverk-settings — the egui/eframe settings window. A background worker
+calls fvkit's synchronous core directly (no daemon / no tokio); eframe's glow
+backend + winit pull the macOS framework links through their build scripts.
 
 fvkit comes from the @fvkit module (@fvkit//app/core:fvkit), not the
 crate_universe — so third-party crates are hand-listed from the @crates
@@ -18,7 +18,6 @@ rust_binary(
     deps = [
         "@crates//:anyhow",
         "@crates//:eframe",
-        "@crates//:tokio",
         "@fvkit//app/core:fvkit",
     ],
 )

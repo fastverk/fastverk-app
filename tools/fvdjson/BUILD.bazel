@@ -1,0 +1,21 @@
+"""`fvd-json` — a one-shot JSON-speaking fvd gRPC client.
+
+The SwiftUI Dashboard's meridian RpcInvoker shells out to this binary to
+dispatch panel RPCs, instead of linking a native gRPC/Swift stack. It reuses
+fvkit's tonic client (@fvkit//app/core:fvkit) over the fvd Unix socket and
+emits responses as snake_case JSON so meridian field-paths resolve.
+"""
+
+load("@rules_rust//rust:defs.bzl", "rust_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_binary(
+    name = "fvd_json",
+    srcs = ["fvd_json.rs"],
+    edition = "2021",
+    deps = [
+        "@crates//:serde_json",
+        "@fvkit//app/core:fvkit",
+    ],
+)
