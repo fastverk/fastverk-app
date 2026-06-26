@@ -1,0 +1,42 @@
+name: release
+
+# Tag a version (e.g. `git tag v0.0.3 && git push origin v0.0.3`) to build the
+# macOS app + .dmg and publish a GitHub Release with the .dmg attached. The
+# in-app self-updater (fvkit::update) watches this repo's releases and installs
+# the .dmg, so the asset name must end in `.dmg`.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release + upload the asset
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dmg:
+    name: build + publish .dmg (macOS)
+    # macos-latest ships Xcode, needed to build the SwiftUI Dashboard in the
+    # bundle. Ad-hoc signed for now; Developer ID + notarization is a follow-up
+    # (see tools/macos/sign_notarize.sh).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.10.0
+        with:
+          bazelisk-cache: true
+      - name: build the .dmg
+        run: bazel build //tools/macos:fastverk_dmg
+      - name: publish GitHub Release with the .dmg
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset="fastverk-${{ github.ref_name }}.dmg"
+          cp bazel-bin/tools/macos/fastverk_dmg.dmg "$asset"
+          gh release create "${{ github.ref_name }}" "$asset" \
+            --title "fastverk ${{ github.ref_name }}" \
+            --generate-notes
