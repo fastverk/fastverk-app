@@ -8,6 +8,11 @@ common --registry=https://bcr.bazel.build/
 
 common --action_env=HOME
 
+# Stamp the real version into the binaries (fvkit's lib reads
+# STABLE_FASTVERK_VERSION via rustc_env). Release builds pass --stamp; local
+# `bazel build` does not, so dev builds stay cache-friendly.
+build --workspace_status_command=tools/workspace_status.sh
+
 test --test_output=errors
 test --test_summary=terse
 
