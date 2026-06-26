@@ -26,6 +26,25 @@ jobs:
           repository-cache: true
       - run: bazel test //... --test_output=errors
 
+  swift:
+    name: swift renderer (macOS)
+    # macos-latest runners ship a full Xcode, so they build the Swift parts a
+    # Command-Line-Tools-only dev box can't. Validates rules_swift + the apple
+    # CC toolchain on CI, independent of any local Xcode install.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.10.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-macos-swift
+          repository-cache: true
+      # The Swift surface: the Dashboard app (consumes @meridian//swift:
+      # MeridianUI from meridian 0.2.2) + its panel bundle + the fvd-json shim.
+      # This compiling is the real toolchain + renderer validation; the
+      # tools/swiftcheck probe is now redundant and can be removed.
+      - run: bazel build //app/dashboard:fastverk-dashboard
+
   buildifier:
     name: buildifier lint
     runs-on: ubuntu-latest

@@ -1,0 +1,233 @@
+# fastverk Dashboard panel bundle — PanelDescriptors driving the SwiftUI
+# Dashboard window (app/dashboard), rendered by the meridian Swift renderer.
+#
+# Compiled to .binpb by the `meridian_panel_bundle` Bazel rule and bundled
+# into the .app Resources. Each panel's `populate` RPC targets the fvd
+# daemon (fastverk.v1.Fvd); the Dashboard's RpcInvoker dispatches it by
+# shelling out to the `fvd-json` shim, which calls fvd over its Unix socket
+# and returns snake_case JSON the `field_path`s below resolve against.
+#
+# All panels are read-only tables. MAINTENANCE runs in validate_only mode
+# (a preview), so opening the Dashboard never mutates anything.
+
+# ============================================================
+# REPOS — managed repo checkouts. `spec.name` is a nested path
+# (RepoState.spec is a RepoSpec) — exercises ProtoPaths.
+# ============================================================
+panels {
+  panel_id: "repos"
+  title: "Repos"
+  table {
+    populate {
+      service: "fastverk.v1.Fvd"
+      method: "ReposStatus"
+    }
+    rows_field: "repos"
+    item_noun: "repos"
+    placeholder: "No managed repos. Run a repos sync to populate."
+    columns {
+      header: "Repo"
+      field_path: "spec.name"
+      pref_width: 28
+    }
+    columns {
+      header: "Branch"
+      field_path: "branch"
+      pref_width: 24
+    }
+    columns {
+      header: "Head"
+      field_path: "head"
+      pref_width: 12
+    }
+    columns {
+      header: "Present"
+      field_path: "present"
+      pref_width: 8
+    }
+    columns {
+      header: "Dirty"
+      field_path: "dirty"
+      pref_width: 7
+    }
+  }
+}
+
+# ============================================================
+# VOLUMES — managed APFS volumes (repos + caches).
+# ============================================================
+panels {
+  panel_id: "volumes"
+  title: "Volumes"
+  table {
+    populate {
+      service: "fastverk.v1.Fvd"
+      method: "VolumeStatus"
+    }
+    rows_field: "volumes"
+    item_noun: "volumes"
+    placeholder: "No managed volumes."
+    columns {
+      header: "Volume"
+      field_path: "spec.id"
+      pref_width: 10
+    }
+    columns {
+      header: "Mount point"
+      field_path: "spec.mount_point"
+      pref_width: 24
+    }
+    columns {
+      header: "Mounted"
+      field_path: "mounted"
+      pref_width: 8
+    }
+    columns {
+      header: "Used"
+      field_path: "used_bytes"
+      format: INTEGER
+      pref_width: 14
+    }
+    columns {
+      header: "Free"
+      field_path: "free_bytes"
+      format: INTEGER
+      pref_width: 14
+    }
+    columns {
+      header: "Device"
+      field_path: "device"
+      pref_width: 10
+    }
+  }
+}
+
+# ============================================================
+# WORKTREES — git worktrees across managed repos.
+# ============================================================
+panels {
+  panel_id: "worktrees"
+  title: "Worktrees"
+  table {
+    populate {
+      service: "fastverk.v1.Fvd"
+      method: "WorktreeList"
+    }
+    rows_field: "worktrees"
+    item_noun: "worktrees"
+    placeholder: "No worktrees."
+    columns {
+      header: "Repo"
+      field_path: "repo"
+      pref_width: 20
+    }
+    columns {
+      header: "Branch"
+      field_path: "branch"
+      pref_width: 24
+    }
+    columns {
+      header: "Head"
+      field_path: "head"
+      pref_width: 12
+    }
+    columns {
+      header: "Path"
+      field_path: "path"
+      pref_width: 40
+    }
+  }
+}
+
+# ============================================================
+# CONNECTIONS — managed auth connections (secrets stripped).
+# host_patterns is a repeated string (STRING_LIST); auth_kind
+# is emitted as its enum name (ENUM_NAME).
+# ============================================================
+panels {
+  panel_id: "connections"
+  title: "Connections"
+  table {
+    populate {
+      service: "fastverk.v1.Fvd"
+      method: "ListConnections"
+    }
+    rows_field: "connections"
+    item_noun: "connections"
+    placeholder: "No connections. Connect a provider to authenticate fetches."
+    columns {
+      header: "Id"
+      field_path: "id"
+      pref_width: 16
+    }
+    columns {
+      header: "Provider"
+      field_path: "provider"
+      pref_width: 12
+    }
+    columns {
+      header: "Hosts"
+      field_path: "host_patterns"
+      format: STRING_LIST
+      pref_width: 28
+    }
+    columns {
+      header: "Auth"
+      field_path: "auth_kind"
+      format: ENUM_NAME
+      pref_width: 10
+    }
+    columns {
+      header: "Expires"
+      field_path: "token_expires_at"
+      format: TIMESTAMP
+      pref_width: 22
+    }
+  }
+}
+
+# ============================================================
+# MAINTENANCE — preview of the periodic maintenance tasks.
+# validate_only=true (literal binding) so opening the panel is
+# read-safe; an actual run is a future row action / button.
+# ============================================================
+panels {
+  panel_id: "maintenance"
+  title: "Maintenance"
+  table {
+    populate {
+      service: "fastverk.v1.Fvd"
+      method: "MaintainNow"
+      bindings {
+        request_field: "validate_only"
+        # Literal "true" — interpreted in terms of the target field's
+        # proto type (bool). Keeps the panel a no-op preview.
+        literal: "true"
+      }
+    }
+    rows_field: "tasks"
+    item_noun: "tasks"
+    placeholder: "No maintenance tasks reported."
+    columns {
+      header: "Task"
+      field_path: "name"
+      pref_width: 18
+    }
+    columns {
+      header: "OK"
+      field_path: "ok"
+      pref_width: 5
+    }
+    columns {
+      header: "Detail"
+      field_path: "detail"
+      pref_width: 44
+    }
+    columns {
+      header: "Reclaimed"
+      field_path: "bytes_reclaimed"
+      format: INTEGER
+      pref_width: 12
+    }
+  }
+}

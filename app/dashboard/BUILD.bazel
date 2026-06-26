@@ -1,0 +1,34 @@
+"""The fastverk Dashboard — a native SwiftUI meridian renderer.
+
+A standalone window app (spawned by the tray) that renders the fastverk panel
+bundle backed by fvd. Uses the meridian Swift renderer (@meridian//swift:
+MeridianUI) and a subprocess RpcInvoker over the fvd-json shim.
+
+Build/run requires a full Xcode on the host (rules_swift). For `bazel run`,
+point it at the bundle + shim + socket:
+
+  bazel run //app/dashboard:fastverk-dashboard \
+      --run_env=FASTVERK_PANELS=$(bazel info bazel-bin)/proto/fastverk/ui/v1/panels.binpb \
+      --run_env=FASTVERK_FVD_JSON=$(bazel info bazel-bin)/tools/fvdjson/fvd_json \
+      --run_env=FASTVERK_SOCKET=...   # the running fvd's socket
+"""
+
+load("@rules_swift//swift:swift_binary.bzl", "swift_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+swift_binary(
+    name = "fastverk-dashboard",
+    srcs = glob(["Sources/**/*.swift"]),
+    # Panel bundle + shim available as runfiles for `bazel run` (the loader
+    # also accepts $FASTVERK_PANELS / $FASTVERK_FVD_JSON overrides).
+    data = [
+        "//proto/fastverk/ui/v1:panels",
+        "//tools/fvdjson:fvd_json",
+    ],
+    # `manual`: excluded from `//...` until meridian >= 0.2.2 (with
+    # //swift:MeridianUI) is published or the local_path_override is on — the
+    # `swift` CI job builds it explicitly. Keeps `bazel test //...` green.
+    tags = ["manual"],
+    deps = ["@meridian//swift:MeridianUI"],
+)

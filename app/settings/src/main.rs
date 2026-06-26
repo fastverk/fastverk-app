@@ -4,18 +4,19 @@
 //! | `status`). Runs in its own process + event loop, so it never
 //! contends with the tray's `tao` loop.
 //!
-//! Async fvd calls run on a background tokio worker; the UI sends typed
-//! `Job`s and reads a shared snapshot, repainting when the worker updates.
+//! fvkit calls run on a background worker thread; the UI sends typed `Job`s
+//! and reads a shared snapshot, repainting when the worker updates. The worker
+//! calls fvkit's **synchronous core API directly** (like cli/fv) rather than
+//! fvd's async gRPC client — fvkit lives in its own crate_universe hub, so its
+//! tokio reactor differs from ours and driving its async client from a
+//! locally-built runtime panics ("no reactor running"). No daemon needed.
 
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 use fvkit::proto::{
-    BazelrcApplyRequest, BazelrcPreviewRequest, ConnectProviderRequest, Connection,
-    DisconnectRequest, GetStatusRequest, ListConnectionsRequest, MaintainNowRequest,
-    MaintenanceReport, OAuthConfig, RepoSyncReport, ReposSyncRequest, StatusResponse, VolumeAudit,
-    VolumeAuditRequest, VolumeCreateRequest, VolumeDisposition,
+    Connection, MaintenanceReport, RepoSyncReport, StatusResponse, VolumeAudit, VolumeDisposition,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -357,17 +358,6 @@ fn human(bytes: i64) -> String {
 fn spawn_worker(shared: Arc<Mutex<Shared>>, ctx: egui::Context) -> Sender<Job> {
     let (tx, rx) = channel::<Job>();
     std::thread::spawn(move || {
-        let rt = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(rt) => rt,
-            Err(e) => {
-                shared.lock().unwrap().error = Some(format!("runtime: {e}"));
-                ctx.request_repaint();
-                return;
-            }
-        };
         for job in rx {
             {
                 let mut g = shared.lock().unwrap();
@@ -375,7 +365,7 @@ fn spawn_worker(shared: Arc<Mutex<Shared>>, ctx: egui::Context) -> Sender<Job> {
                 g.error = None;
             }
             ctx.request_repaint();
-            let res = rt.block_on(run_job(job, &shared));
+            let res = run_job(job, &shared);
             {
                 let mut g = shared.lock().unwrap();
                 g.busy = false;
@@ -389,32 +379,31 @@ fn spawn_worker(shared: Arc<Mutex<Shared>>, ctx: egui::Context) -> Sender<Job> {
     tx
 }
 
-async fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
-    // fvkit returns fvkit::Error (impls std::error::Error), so `?` converts it
-    // into this crate's anyhow across the module boundary — no manual mapping.
-    let mut c = fvkit::ipc::connect_default().await?;
+fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
+    // fvkit's core API is synchronous; call it directly (mirroring the fvd read
+    // handlers + cli/fv's connect.rs). fvkit returns fvkit::Error (impls
+    // std::error::Error), so `?` converts it into this crate's anyhow.
     match job {
         Job::Refresh => {
-            let status = c.get_status(GetStatusRequest {}).await?.into_inner();
-            let connections = c
-                .list_connections(ListConnectionsRequest {})
-                .await?
-                .into_inner()
-                .connections;
-            let audits = c
-                .volume_audit(VolumeAuditRequest {})
-                .await?
-                .into_inner()
-                .audits;
-            let bazelrc = c
-                .bazelrc_preview(BazelrcPreviewRequest {})
-                .await?
-                .into_inner()
-                .managed_block;
+            let volumes = fvkit::volume::status().unwrap_or_default();
+            let reg = fvkit::connections::load().unwrap_or_default();
+            let update = fvkit::update::check().ok();
+            let status = StatusResponse {
+                version: fvkit::version().to_string(),
+                volumes,
+                connection_count: i32::try_from(reg.connections.len()).unwrap_or(i32::MAX),
+                last_maintenance: None,
+                update_available: update.as_ref().is_some_and(|u| u.available),
+                latest_version: update.map(|u| u.latest).unwrap_or_default(),
+            };
+            let audits = fvkit::volume::audit()?;
+            let cfg = fvkit::config::Config::load()?;
+            let bazelrc =
+                fvkit::bazelrc::managed_block(&cfg, &fvkit::bazelrc::cred_helper_path());
             let repo_sources = configured_sources();
             let mut g = shared.lock().unwrap();
             g.status = Some(status);
-            g.connections = connections;
+            g.connections = reg.connections;
             g.audits = audits;
             g.repo_sources = repo_sources;
             g.bazelrc = bazelrc;
@@ -425,80 +414,80 @@ async fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
             client_id,
             api_key,
         } => {
-            c.connect_provider(ConnectProviderRequest {
+            // Explicit client id wins, else the configured one for the provider.
+            let cfg = fvkit::config::Config::load().unwrap_or_default();
+            let client_id = if client_id.is_empty() {
+                cfg.client_ids.get(&provider).cloned().unwrap_or_default()
+            } else {
+                client_id
+            };
+            let params = fvkit::connections::ConnectParams {
                 provider,
                 host,
-                oauth: if client_id.is_empty() {
-                    None
-                } else {
-                    Some(OAuthConfig {
-                        client_id,
-                        ..Default::default()
-                    })
-                },
+                client_id,
                 api_key,
-                ..Default::default()
-            })
-            .await?;
-            let connections = c
-                .list_connections(ListConnectionsRequest {})
-                .await?
-                .into_inner()
-                .connections;
-            shared.lock().unwrap().connections = connections;
+            };
+            // The device-code flow blocks on the user authorizing — fine on this
+            // worker thread. Surface the user code as a notification and open the
+            // verification page (the egui window can't show the code mid-block).
+            fvkit::connections::connect(&params, |code, uri| {
+                fvkit::notify::send(
+                    "fastverk",
+                    &format!("Authorize: visit {uri} and enter code {code}"),
+                );
+                let _ = std::process::Command::new("open").arg(uri).status();
+            })?;
+            shared.lock().unwrap().connections = fvkit::connections::load()?.connections;
         }
         Job::Disconnect(id) => {
-            c.disconnect(DisconnectRequest { id }).await?;
-            let connections = c
-                .list_connections(ListConnectionsRequest {})
-                .await?
-                .into_inner()
-                .connections;
-            shared.lock().unwrap().connections = connections;
+            fvkit::connections::disconnect(&id)?;
+            shared.lock().unwrap().connections = fvkit::connections::load()?.connections;
         }
         Job::VolumeCreate(id) => {
-            let r = c.volume_create(VolumeCreateRequest { id }).await?.into_inner();
-            shared.lock().unwrap().log.push(r.message);
+            // Audit-safe create (elevation prompt + diskutil); blocking is fine here.
+            let (_volumes, message) = fvkit::volume::create(&id, false)?;
+            shared.lock().unwrap().log.push(message);
             // Re-audit so the panel reflects the post-provision state.
-            let audits = c
-                .volume_audit(VolumeAuditRequest {})
-                .await?
-                .into_inner()
-                .audits;
+            let audits = fvkit::volume::audit()?;
             shared.lock().unwrap().audits = audits;
         }
         Job::ReposSync { dry_run } => {
-            let r = c
-                .repos_sync(ReposSyncRequest {
-                    pull: !dry_run,
-                    validate_only: dry_run,
-                    ..Default::default()
-                })
-                .await?
-                .into_inner();
-            shared.lock().unwrap().repo_report = Some(r);
+            let cfg = fvkit::config::Config::load()?;
+            let reports = fvkit::repos::sync_sources(
+                &cfg.repos_dir(),
+                &cfg.sources,
+                &cfg.meta_repo_name(),
+                !dry_run,
+                dry_run,
+            )?;
+            // Merge per-source reports into one (as the fvd handler does).
+            let mut merged = RepoSyncReport {
+                org: "all".to_string(),
+                forge: "multi".to_string(),
+                validate_only: dry_run,
+                ..Default::default()
+            };
+            for r in reports {
+                if merged.started_at.is_empty() {
+                    merged.started_at = r.started_at;
+                }
+                merged.finished_at = r.finished_at;
+                merged.outcomes.extend(r.outcomes);
+            }
+            shared.lock().unwrap().repo_report = Some(merged);
         }
         Job::BazelrcApply { dry_run } => {
-            let r = c
-                .bazelrc_apply(BazelrcApplyRequest {
-                    validate_only: dry_run,
-                })
-                .await?
-                .into_inner();
-            shared.lock().unwrap().log.push(if r.changed {
-                r.diff
+            let cfg = fvkit::config::Config::load()?;
+            let (changed, diff) =
+                fvkit::bazelrc::apply(&cfg, &fvkit::bazelrc::cred_helper_path(), dry_run)?;
+            shared.lock().unwrap().log.push(if changed {
+                diff
             } else {
                 "already up to date".to_string()
             });
         }
         Job::Maintain { dry_run } => {
-            let r = c
-                .maintain_now(MaintainNowRequest {
-                    validate_only: dry_run,
-                    only: vec![],
-                })
-                .await?
-                .into_inner();
+            let r = fvkit::maintain::run(dry_run, &[])?;
             shared.lock().unwrap().maint = Some(r);
         }
     }

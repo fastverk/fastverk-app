@@ -22,7 +22,6 @@ rust_binary(
         "@crates//:anyhow",
         "@crates//:image",
         "@crates//:tao",
-        "@crates//:tokio",
         "@crates//:tray-icon",
         "@fvkit//app/core:fvkit",
     ],

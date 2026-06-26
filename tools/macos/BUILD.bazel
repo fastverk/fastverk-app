@@ -27,6 +27,11 @@ macos_app_bundle(
         "//app/desktop:fastverk": "fastverk",
         "@fvkit//app/daemon:fvd": "fvd",
         "//app/settings:fastverk-settings": "fastverk-settings",
+        # The SwiftUI Dashboard window (a meridian renderer) + the JSON shim
+        # it shells out to for fvd RPCs. The shim reaches fvd over the socket;
+        # the Dashboard locates both as siblings in Contents/MacOS.
+        "//app/dashboard:fastverk-dashboard": "fastverk-dashboard",
+        "//tools/fvdjson:fvd_json": "fvd-json",
         # TODO: bundle fv from the meta-repo's published release artifact.
         # The `//cli/fv:fv` CLI lives in the meta-repo (not this module) and
         # has no release yet, so it's omitted; the .app still builds without it.
@@ -34,6 +39,10 @@ macos_app_bundle(
     },
     icon = "@brand//icons:fastverk_full.icns",
     plist = ":Info.plist",
+    # The Dashboard panel bundle, decoded by the SwiftUI app at startup.
+    resources = {
+        "//proto/fastverk/ui/v1:panels": "panels.binpb",
+    },
 )
 
 macos_dmg(

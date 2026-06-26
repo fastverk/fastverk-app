@@ -2,12 +2,12 @@
 # dependency — generated at build time, never vendored, so they can't drift.
 package(default_visibility = ["//visibility:public"])
 
-# Menu-bar tray icon: the lower mark variant (legible at small sizes),
+# Menu-bar tray icon: the full mark variant (the icon used throughout),
 # embedded via include_bytes! in //app/desktop. The .app AppIcon.icns is
 # taken straight from @brand//icons in //tools/macos.
 genrule(
     name = "tray-icon",
-    srcs = ["@brand//icons:fastverk_lower_64.png"],
+    srcs = ["@brand//icons:fastverk_full_128.png"],
     outs = ["tray-icon.png"],
-    cmd = "cp $(location @brand//icons:fastverk_lower_64.png) $@",
+    cmd = "cp $(location @brand//icons:fastverk_full_128.png) $@",
 )
