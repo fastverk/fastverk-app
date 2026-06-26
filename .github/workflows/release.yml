@@ -1,9 +1,22 @@
 name: release
 
-# Tag a version (e.g. `git tag v0.0.3 && git push origin v0.0.3`) to build the
+# Tag a version (e.g. `git tag v0.0.4 && git push origin v0.0.4`) to build the
 # macOS app + .dmg and publish a GitHub Release with the .dmg attached. The
 # in-app self-updater (fvkit::update) watches this repo's releases and installs
-# the .dmg, so the asset name must end in `.dmg`.
+# the .dmg, so the asset name ends in `.dmg`.
+#
+# Notarization: if the Developer ID + App Store Connect API-key secrets below
+# are configured, the .app is Developer ID-signed (hardened runtime), notarized,
+# and stapled — so it downloads + installs with zero Gatekeeper friction.
+# Without them it falls back to an ad-hoc-signed .dmg (Gatekeeper will warn).
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   DEVELOPER_ID_CERT_P12       base64 of the "Developer ID Application" .p12
+#   DEVELOPER_ID_CERT_PASSWORD  the .p12 export password
+#   DEVELOPER_ID_IDENTITY       e.g. "Developer ID Application: Name (TEAMID)"
+#   AC_API_KEY_P8               base64 of the App Store Connect API key (.p8)
+#   AC_API_KEY_ID               the key id
+#   AC_API_ISSUER_ID            the issuer id
+#   KEYCHAIN_PASSWORD           any string (for the ephemeral CI keychain)
 
 on:
   push:
@@ -19,24 +32,64 @@ concurrency:
 jobs:
   dmg:
     name: build + publish .dmg (macOS)
-    # macos-latest ships Xcode, needed to build the SwiftUI Dashboard in the
-    # bundle. Ad-hoc signed for now; Developer ID + notarization is a follow-up
-    # (see tools/macos/sign_notarize.sh).
     runs-on: macos-latest
+    env:
+      # `secrets.* != ''` is usable in step `if:`; gate notarization on the cert.
+      HAS_SIGNING: ${{ secrets.DEVELOPER_ID_CERT_P12 != '' }}
+      ASSET: fastverk-${{ github.ref_name }}.dmg
     steps:
       - uses: actions/checkout@v4
       - uses: bazel-contrib/setup-bazel@0.10.0
         with:
           bazelisk-cache: true
-      - name: build the .dmg
-        run: bazel build //tools/macos:fastverk_dmg
-      - name: publish GitHub Release with the .dmg
+
+      # Build the .app with the version stamped from the tag (so the installed
+      # app reports its real version and doesn't re-nag for updates).
+      - name: build the .app (stamped)
+        env:
+          FASTVERK_RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          bazel build --stamp //tools/macos:fastverk_app
+          mkdir -p out && tar -C out -xf bazel-bin/tools/macos/fastverk_app.tar
+          test -d out/fastverk.app
+
+      # Developer ID sign + notarize + staple + signed .dmg (when configured).
+      - name: sign + notarize + dmg
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        env:
+          CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          CERT_PW: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          IDENTITY: ${{ secrets.DEVELOPER_ID_IDENTITY }}
+          AC_KEY: ${{ secrets.AC_API_KEY_P8 }}
+          AC_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_ISSUER: ${{ secrets.AC_API_ISSUER_ID }}
+          KEYCHAIN_PW: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/fastverk-signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KC"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$CERT_PW" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KC" "$(security default-keychain | tr -d ' "')"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KC"
+          echo "$AC_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          bash tools/macos/sign_notarize.sh \
+            "out/fastverk.app" "$ASSET" "$IDENTITY" \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$AC_KEY_ID" --issuer "$AC_ISSUER"
+          rm -f "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/AuthKey.p8"
+
+      # Fallback: ad-hoc .dmg when no Developer ID is configured (Gatekeeper
+      # will warn on download until the secrets above are added).
+      - name: ad-hoc .dmg
+        if: ${{ env.HAS_SIGNING != 'true' }}
+        run: hdiutil create -volname fastverk -srcfolder out/fastverk.app -ov -format UDZO "$ASSET"
+
+      - name: publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          asset="fastverk-${{ github.ref_name }}.dmg"
-          cp bazel-bin/tools/macos/fastverk_dmg.dmg "$asset"
-          gh release create "${{ github.ref_name }}" "$asset" \
+          gh release create "${{ github.ref_name }}" "$ASSET" \
             --title "fastverk ${{ github.ref_name }}" \
             --generate-notes
