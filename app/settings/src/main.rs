@@ -395,6 +395,11 @@ fn run_job(job: Job, shared: &Arc<Mutex<Shared>>) -> anyhow::Result<()> {
                 last_maintenance: None,
                 update_available: update.as_ref().is_some_and(|u| u.available),
                 latest_version: update.map(|u| u.latest).unwrap_or_default(),
+                // The settings window reads fvkit's sync core and does not do
+                // login (that's the tray's Account menu, via fvd's Auth service),
+                // so it has no identity to report here.
+                signed_in: false,
+                account_email: String::new(),
             };
             let audits = fvkit::volume::audit()?;
             let cfg = fvkit::config::Config::load()?;

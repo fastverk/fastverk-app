@@ -22,7 +22,7 @@ bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "rules_rust", version = "0.70.0")
 bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
-bazel_dep(name = "fvkit", version = "0.0.3")
+bazel_dep(name = "fvkit", version = "0.0.4")  # plugin architecture + identity.v1.Auth
 bazel_dep(name = "brand", version = "0.2.0")  # AppIcon + tray icon (package dep, no vendoring)
 bazel_dep(name = "meridian", version = "0.2.2")  # proto-driven UI framework: panel-bundle rule + Swift renderer (//swift:MeridianUI)
 
