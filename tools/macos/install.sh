@@ -52,7 +52,7 @@ MNT=""
 # Belt-and-suspenders (gh downloads aren't quarantined, but just in case).
 xattr -dr com.apple.quarantine "$APP" 2>/dev/null || true
 
-# Put the `fv` CLI on PATH for the quickstart (fv bootstrap / connect / sync).
+# Put the `fv` product CLI on PATH for the quickstart (fv service / status).
 # current_exe() resolves the symlink back into the bundle, so fv still finds
 # its sibling fvd / cred-helper there.
 mkdir -p "$HOME/.local/bin"
@@ -60,5 +60,6 @@ ln -sfn "$APP/Contents/MacOS/fv" "$HOME/.local/bin/fv"
 
 echo "✓ installed $APP"
 echo "  launch:        open -a fastverk        # a menu-bar icon appears"
-echo "  cli:           fv bootstrap            # ~/.local/bin/fv (ensure it's on PATH)"
-echo "  run at login:  fv service install"
+echo "  run at login:  fv service install      # ~/.local/bin/fv (ensure it's on PATH)"
+echo "  daemon status: fv status"
+echo "  bazel dev env: install tbzl (github.com/tomato-bazel/tbzl), then \`tbzl bootstrap\`"
