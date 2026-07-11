@@ -15,7 +15,9 @@ enum Config {
     static let cognitoDomain = "auth.fastverk.com"
 
     /// The fastverk-web app-client id (public, PKCE). Shared with the web.
-    static let cognitoClientId = "2hu1kjtgjp0c5rh0eh0f7jo2a3"
+    /// This is the fastverk-auth stack's UserPoolClientId in aion-dev
+    /// (pool us-east-1_MaCQ9hbpF); fastverk://auth/callback is registered on it.
+    static let cognitoClientId = "270l1tap1n2c3jogeql7op4kh"
 
     /// OAuth scopes — must be a subset of the client's AllowedOAuthScopes.
     static let scopes = "email openid profile"
