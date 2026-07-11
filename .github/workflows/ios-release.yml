@@ -22,6 +22,10 @@ on:
   push:
     tags: ["ios-v*"]
 
+permissions:
+  contents: read
+  id-token: write # assume the fastverk-app-cdn-push role (OIDC) to refresh the landing page
+
 concurrency:
   group: ios-release-${{ github.ref }}
   cancel-in-progress: false
@@ -93,3 +97,21 @@ jobs:
         run: |
           echo "::notice::iOS signing secrets not set — skipping the signed .ipa build."
           echo "Add IOS_DIST_CERT_P12 / IOS_DIST_CERT_PASSWORD / IOS_PROVISIONING_PROFILE to enable TestFlight uploads."
+
+      # iOS ships via TestFlight (not a direct download), so its CDN presence is
+      # the download landing page's TestFlight entry — refresh it on each iOS
+      # release. Runs regardless of signing.
+      - name: assume the CDN push role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::042825952740:role/fastverk-app-cdn-push
+          aws-region: us-east-1
+      - name: refresh the landing page on static.fastverk.com
+        env:
+          BUCKET: fastverk-static-assets-042825952740
+          DIST: E1DTPC9TYC7JTS
+        run: |
+          set -euo pipefail
+          aws s3 cp deploy/cdn/index.html "s3://$BUCKET/apps/index.html" \
+            --content-type "text/html; charset=utf-8" --cache-control "public,max-age=300"
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/apps/index.html"

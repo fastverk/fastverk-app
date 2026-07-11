@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  fastverk app distribution — the GitHub Actions OIDC role that release.yml /
+  ios-release.yml assume to publish the built apps (the macOS .dmg + the
+  download landing page) to the static.fastverk.com CDN. Least-privilege: writes
+  only under the apps/ prefix of the pre-existing static-assets bucket and can
+  invalidate only the CDN distribution. The bucket + CloudFront distribution
+  themselves are owned by their own stack (botnoc static-cdn); this template only
+  references them, it does not manage them.
+
+Parameters:
+  StaticBucket:
+    Type: String
+    Default: fastverk-static-assets-042825952740
+    Description: The static.fastverk.com origin bucket (managed elsewhere).
+  DistributionId:
+    Type: String
+    Default: E1DTPC9TYC7JTS
+    Description: The static.fastverk.com CloudFront distribution id.
+  OidcProviderArn:
+    Type: String
+    Default: arn:aws:iam::042825952740:oidc-provider/token.actions.githubusercontent.com
+    Description: The pre-existing GitHub Actions OIDC provider ARN.
+  SubjectClaim:
+    Type: String
+    Default: "repo:fastverk/fastverk-app:ref:refs/tags/*"
+    Description: >
+      The GitHub OIDC `sub` this role trusts. Scoped to fastverk-app tag pushes
+      (v* macOS releases, ios-v* iOS releases) — not arbitrary branches.
+
+Resources:
+  CdnPushRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: fastverk-app-cdn-push
+      Description: GitHub Actions (fastverk-app releases) publishing to static.fastverk.com/apps/*
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref OidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+              StringLike:
+                "token.actions.githubusercontent.com:sub": !Ref SubjectClaim
+      Policies:
+        - PolicyName: publish-apps
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: WriteAppsPrefix
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub "arn:aws:s3:::${StaticBucket}/apps/*"
+              - Sid: InvalidateCdn
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                Resource: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${DistributionId}"
+
+Outputs:
+  RoleArn:
+    Description: Role ARN for aws-actions/configure-aws-credentials (role-to-assume).
+    Value: !GetAtt CdnPushRole.Arn

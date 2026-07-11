@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: write # create the release + upload the asset
+  id-token: write # assume the fastverk-app-cdn-push role (OIDC) to publish to the CDN
 
 concurrency:
   group: release-${{ github.ref }}
@@ -93,3 +94,30 @@ jobs:
           gh release create "${{ github.ref_name }}" "$ASSET" \
             --title "fastverk ${{ github.ref_name }}" \
             --generate-notes
+
+      # Publish the .dmg + the download landing page to static.fastverk.com so
+      # https://static.fastverk.com/apps/ has the current app. OIDC role from
+      # deploy/cfn/app-distribution.yaml (scoped to fastverk-app tag pushes).
+      - name: assume the CDN push role (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::042825952740:role/fastverk-app-cdn-push
+          aws-region: us-east-1
+      - name: publish to static.fastverk.com
+        env:
+          BUCKET: fastverk-static-assets-042825952740
+          DIST: E1DTPC9TYC7JTS
+        run: |
+          set -euo pipefail
+          # Immutable versioned copy + the mutable "latest" alias the page links to.
+          aws s3 cp "$ASSET" "s3://$BUCKET/apps/macos/$ASSET" \
+            --content-type application/x-apple-diskimage \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp "$ASSET" "s3://$BUCKET/apps/macos/fastverk-latest.dmg" \
+            --content-type application/x-apple-diskimage \
+            --cache-control "public,max-age=300"
+          aws s3 cp deploy/cdn/index.html "s3://$BUCKET/apps/index.html" \
+            --content-type "text/html; charset=utf-8" \
+            --cache-control "public,max-age=300"
+          aws cloudfront create-invalidation --distribution-id "$DIST" \
+            --paths "/apps/macos/fastverk-latest.dmg" "/apps/index.html"
