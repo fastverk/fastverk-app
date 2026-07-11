@@ -24,7 +24,7 @@ bazel_dep(name = "protobuf", version = "33.4")
 bazel_dep(name = "rules_pkg", version = "1.0.1")
 bazel_dep(name = "fvkit", version = "0.0.4")  # plugin architecture + identity.v1.Auth
 bazel_dep(name = "brand", version = "0.2.0")  # AppIcon + tray icon (package dep, no vendoring)
-bazel_dep(name = "meridian", version = "0.2.2")  # proto-driven UI framework: panel-bundle rule + Swift renderer (//swift:MeridianUI)
+bazel_dep(name = "meridian", version = "0.2.5")  # proto-driven UI framework: panel-bundle rule + Swift renderer (//swift:MeridianUI)
 
 # Native macOS UI: the SwiftUI Dashboard window (app/dashboard) is a meridian
 # renderer. rules_swift + rules_apple resolve from BCR (second registry in the
@@ -44,18 +44,12 @@ use_repo(apple_cc, "local_config_apple_cc_toolchains")
 
 register_toolchains("@local_config_apple_cc_toolchains//:all")
 
-# DEV OVERRIDE (commented): consume the local meridian working copy, which
-# carries the new `//swift:MeridianUI` renderer + `//proto:MeridianProto`.
-# Enable this (or publish meridian >= 0.2.2 with the Swift surface) to build
-# `//app/dashboard` once a full Xcode is installed. It is left OFF by default
-# because the local meridian MODULE's added Swift deps force a crate_universe
-# re-resolution; the registry meridian 0.2.1 (cached) is enough for the panel
-# bundle, and the dashboard's Swift target is Xcode-gated regardless.
-#
-# local_path_override(
-#     module_name = "meridian",
-#     path = "/Volumes/Workspace/fastverk/repos/meridian",
-# )
+# meridian 0.2.5 (pinned above) carries the `//swift:MeridianUI` Swift surface
+# the Dashboard (//app/dashboard) and the iOS console (//app/ios) render with —
+# published to the fastverk registry, so no local_path_override is needed. To
+# iterate on the renderer locally, re-add a local_path_override(module_name =
+# "meridian", path = "…/repos/meridian"). Both Swift apps are Xcode-gated
+# (`manual`), so they're built explicitly by CI on macos-latest, not by //....
 
 # @brand generates its icons hermetically with Python (Pillow); register the
 # matching 3.12 toolchain so its pip wheels resolve when we consume the icons.

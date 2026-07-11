@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>com.fastverk.console</string>
+  <key>CFBundleName</key><string>fastverk</string>
+  <key>CFBundleDisplayName</key><string>fastverk</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleVersion</key><string>0.0.1</string>
+  <key>CFBundleShortVersionString</key><string>0.0.1</string>
+  <key>MinimumOSVersion</key><string>17.0</string>
+  <!-- Empty launch screen dict: full-screen on every device (no letterboxing). -->
+  <key>UILaunchScreen</key><dict/>
+  <!-- Custom scheme for the Cognito OAuth redirect (fastverk://auth/callback),
+       consumed by ASWebAuthenticationSession. Must match the CallbackURLs on the
+       fastverk-web Cognito client (deploy/cfn/cognito-human/fastverk-auth.yaml). -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeRole</key><string>None</string>
+      <key>CFBundleURLName</key><string>com.fastverk.console.auth</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>fastverk</string>
+      </array>
+    </dict>
+  </array>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
+  <key>UISupportedInterfaceOrientations~ipad</key>
+  <array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
+</dict>
+</plist>
