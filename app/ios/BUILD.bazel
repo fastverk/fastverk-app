@@ -60,7 +60,12 @@ swift_library(
 
 ios_application(
     name = "FastverkConsole",
+    # App icon asset catalog (actool compiles it + sets CFBundleIconName). A single
+    # 1024 universal icon; actool derives every required size (incl. iPad 152).
+    app_icons = glob(["Assets.xcassets/**"]),
     bundle_id = "com.fastverk.console",
+    # App Store entitlements matching the provisioning profile's grants.
+    entitlements = "FastverkConsole.entitlements",
     # Universal: TARGETED_DEVICE_FAMILY "1,2".
     families = [
         "iphone",
