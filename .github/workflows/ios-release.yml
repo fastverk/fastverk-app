@@ -75,6 +75,23 @@ jobs:
             --apple_generate_dsym
           cp "bazel-bin/app/ios/FastverkConsole.ipa" "$RUNNER_TEMP/FastverkConsole.ipa"
 
+      - name: verify the .ipa embeds the provisioning profile
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/ipacheck"
+          rm -rf "$work" && mkdir -p "$work"
+          (cd "$work" && unzip -o -q "$RUNNER_TEMP/FastverkConsole.ipa")
+          if find "$work/Payload" -name embedded.mobileprovision | grep -q .; then
+            echo "embedded.mobileprovision present — codesign details:"
+            APP=$(find "$work/Payload" -maxdepth 1 -name '*.app' | head -1)
+            codesign -dv "$APP" 2>&1 | head -8 || true
+          else
+            echo "::error::.ipa is missing embedded.mobileprovision (would be altool 90174)"
+            ls -R "$work/Payload" | head -40
+            exit 1
+          fi
+
       - name: upload to TestFlight
         if: ${{ env.HAS_SIGNING == 'true' }}
         env:

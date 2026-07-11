@@ -46,18 +46,6 @@ platform(
     ],
 )
 
-# True on a simulator build. We gate signing on the SIMULATOR constraint (which
-# platforms always set explicitly) rather than the device one: rules_apple remaps
-# to its own apple_support device platform, which leaves target_environment at its
-# DEFAULT (:device), and config_setting only matches constraints that are set
-# explicitly — so a `:device` config_setting silently misses and the profile
-# never embeds ("Missing Provisioning Profile" from altool). Keying off simulator
-# and defaulting to the profile embeds it on device while keeping sim unsigned.
-config_setting(
-    name = "simulator_build",
-    constraint_values = ["@build_bazel_apple_support//constraints:simulator"],
-)
-
 swift_library(
     name = "FastverkConsoleLib",
     srcs = glob(["Sources/**/*.swift"]),
@@ -83,11 +71,11 @@ ios_application(
     # TableColumnForEach, which is iOS 17.4+ (Swift type-checks the wide-table
     # branch even though iPhone/compact uses the List fork at runtime).
     minimum_os_version = "17.4",
-    # Sign for the App Store on device builds; unset on simulator (no signing).
-    provisioning_profile = select({
-        ":simulator_build": None,
-        "//conditions:default": "Fastverk_Console_App_Store.mobileprovision",
-    }),
+    # App Store provisioning profile. Set unconditionally — rules_apple embeds it
+    # for device signing and ignores it for simulator builds (a select() keyed on
+    # the platform constraint did NOT resolve through rules_apple's transition, so
+    # the profile silently didn't embed → altool 90174).
+    provisioning_profile = "Fastverk_Console_App_Store.mobileprovision",
     tags = ["manual"],
     deps = [":FastverkConsoleLib"],
 )
