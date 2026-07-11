@@ -1,0 +1,95 @@
+name: ios-release
+
+# Tag an iOS build (e.g. `git tag ios-v0.0.1 && git push origin ios-v0.0.1`) to
+# build the signed .ipa and upload it to TestFlight. Distribution is internal
+# (the fastverk-web Cognito pool gates sign-in to the savvifi.com domain), so
+# internal testers get it with no Beta App Review.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   IOS_DIST_CERT_P12         base64 of the "Apple Distribution" .p12
+#   IOS_DIST_CERT_PASSWORD    the .p12 export password
+#   IOS_PROVISIONING_PROFILE  base64 of the App Store provisioning profile for
+#                             com.fastverk.console
+#   AC_API_KEY_P8             base64 of the App Store Connect API key (.p8)  [reused]
+#   AC_API_KEY_ID             the key id                                     [reused]
+#   AC_API_ISSUER_ID          the issuer id                                  [reused]
+#   KEYCHAIN_PASSWORD         any string (for the ephemeral CI keychain)     [reused]
+#
+# Until the signing secrets exist, this workflow only runs when a tag is pushed;
+# builds gate on IOS_DIST_CERT_P12 being present.
+
+on:
+  push:
+    tags: ["ios-v*"]
+
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: build + upload .ipa (TestFlight)
+    runs-on: macos-latest
+    env:
+      HAS_SIGNING: ${{ secrets.IOS_DIST_CERT_P12 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.10.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-macos-ios
+          repository-cache: true
+
+      - name: import signing cert + provisioning profile
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        env:
+          CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          CERT_PW: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          KEYCHAIN_PW: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KC="$RUNNER_TEMP/fastverk-ios.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PW" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KC"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          security import "$RUNNER_TEMP/dist.p12" -k "$KC" -P "$CERT_PW" -T /usr/bin/codesign
+          security list-keychains -d user -s "$KC" "$(security default-keychain | tr -d ' \"')"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KC"
+          # Install the provisioning profile where Xcode/codesign looks for it.
+          PROFILES="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES"
+          echo "$PROFILE" | base64 --decode > "$PROFILES/fastverk-console.mobileprovision"
+          rm -f "$RUNNER_TEMP/dist.p12"
+
+      - name: build signed .ipa (device slice)
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        run: |
+          set -euo pipefail
+          # rules_apple codesigns the ios_application when a provisioning profile
+          # + signing identity are available; produce the arm64 device slice.
+          bazel build //app/ios:FastverkConsole \
+            --platforms=//app/ios:ios_arm64 \
+            --apple_generate_dsym
+          cp "bazel-bin/app/ios/FastverkConsole.ipa" "$RUNNER_TEMP/FastverkConsole.ipa"
+
+      - name: upload to TestFlight
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        env:
+          AC_KEY: ${{ secrets.AC_API_KEY_P8 }}
+          AC_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_ISSUER: ${{ secrets.AC_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$AC_KEY" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_${AC_KEY_ID}.p8"
+          xcrun altool --upload-app -f "$RUNNER_TEMP/FastverkConsole.ipa" -t ios \
+            --apiKey "$AC_KEY_ID" --apiIssuer "$AC_ISSUER"
+          rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_${AC_KEY_ID}.p8"
+
+      - name: signing not configured
+        if: ${{ env.HAS_SIGNING != 'true' }}
+        run: |
+          echo "::notice::iOS signing secrets not set — skipping the signed .ipa build."
+          echo "Add IOS_DIST_CERT_P12 / IOS_DIST_CERT_PASSWORD / IOS_PROVISIONING_PROFILE to enable TestFlight uploads."

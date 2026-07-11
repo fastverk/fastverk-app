@@ -40,10 +40,14 @@ jobs:
           disk-cache: ${{ github.workflow }}-macos-swift
           repository-cache: true
       # The Swift surface: the Dashboard app (consumes @meridian//swift:
-      # MeridianUI from meridian 0.2.2) + its panel bundle + the fvd-json shim.
-      # This compiling is the real toolchain + renderer validation; the
-      # tools/swiftcheck probe is now redundant and can be removed.
+      # MeridianUI) + its panel bundle + the fvd-json shim. This compiling is the
+      # real toolchain + renderer validation; the tools/swiftcheck probe is now
+      # redundant and can be removed.
       - run: bazel build //app/dashboard:fastverk-dashboard
+      # The iOS console — same MeridianUI renderer, built for the simulator
+      # (sim_arm64 needs no code-signing / provisioning profile). Validates the
+      # rules_apple ios_application build + the renderer's #if os(iOS) paths.
+      - run: bazel build //app/ios:FastverkConsole --platforms=//app/ios:ios_sim_arm64
 
   buildifier:
     name: buildifier lint

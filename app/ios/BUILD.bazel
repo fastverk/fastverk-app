@@ -1,0 +1,76 @@
+"""The fastverk iOS console — a native meridian renderer over the cloud backend.
+
+A universal (iPhone + iPad) app that renders the same console the web serves
+(app.fastverk.com): it signs in via Cognito (ASWebAuthenticationSession + PKCE),
+fetches the server-driven NavTree + per-panel PanelBundles from the botnoc-web
+`/api/shell/*` facade, and drives them with the meridian Swift renderer
+(@meridian//swift:MeridianUI) over a networked RpcInvoker (/api/gw/*). No local
+daemon — unlike the macOS Dashboard's fvd-json subprocess, this talks HTTP.
+
+Build/run requires a full Xcode on the host (rules_apple/rules_swift), so the
+targets are `manual` (excluded from //...); the `swift` CI job builds them
+explicitly on macos-latest:
+
+  # simulator (no signing needed):
+  bazel build //app/ios:FastverkConsole --platforms=//app/ios:ios_sim_arm64
+  # device archive (needs a provisioning profile + signing identity):
+  bazel build //app/ios:FastverkConsole --platforms=//app/ios:ios_arm64
+"""
+
+load("@rules_apple//apple:ios.bzl", "ios_application")
+load("@rules_swift//swift:swift_library.bzl", "swift_library")
+
+package(default_visibility = ["//visibility:public"])
+
+# iOS target platforms for `--platforms=…`. An `ios_application` is only
+# compatible with an iOS platform, so a top-level build must select one —
+# apple_support ships only macOS *host* platforms, not iOS targets, and
+# `--ios_multi_cpus` alone leaves the top-level config on the macOS host (→
+# "incompatible ... but was explicitly requested"). simulator vs device is the
+# apple_support `target_environment` constraint.
+platform(
+    name = "ios_sim_arm64",
+    constraint_values = [
+        "@platforms//os:ios",
+        "@platforms//cpu:arm64",
+        "@build_bazel_apple_support//constraints:simulator",
+    ],
+)
+
+platform(
+    name = "ios_arm64",
+    constraint_values = [
+        "@platforms//os:ios",
+        "@platforms//cpu:arm64",
+        "@build_bazel_apple_support//constraints:device",
+    ],
+)
+
+swift_library(
+    name = "FastverkConsoleLib",
+    srcs = glob(["Sources/**/*.swift"]),
+    module_name = "FastverkConsole",
+    # Xcode-gated like //app/dashboard; keeps `bazel test //...` green on a
+    # Command-Line-Tools-only dev box.
+    tags = ["manual"],
+    # @meridian//swift:MeridianUI pulls MeridianProto + MeridianThemeProto
+    # transitively (swift-protobuf); AuthenticationServices/SwiftUI autolink.
+    deps = ["@meridian//swift:MeridianUI"],
+)
+
+ios_application(
+    name = "FastverkConsole",
+    bundle_id = "com.fastverk.console",
+    # Universal: TARGETED_DEVICE_FAMILY "1,2".
+    families = [
+        "iphone",
+        "ipad",
+    ],
+    infoplists = ["Info.plist"],
+    # 17.4 because meridian's TablePanelView renders dynamic columns via
+    # TableColumnForEach, which is iOS 17.4+ (Swift type-checks the wide-table
+    # branch even though iPhone/compact uses the List fork at runtime).
+    minimum_os_version = "17.4",
+    tags = ["manual"],
+    deps = [":FastverkConsoleLib"],
+)
