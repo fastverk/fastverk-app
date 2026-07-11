@@ -47,7 +47,7 @@ jobs:
       # The iOS console — same MeridianUI renderer, built for the simulator
       # (sim_arm64 needs no code-signing / provisioning profile). Validates the
       # rules_apple ios_application build + the renderer's #if os(iOS) paths.
-      - run: bazel build //app/ios:FastverkConsole --ios_multi_cpus=sim_arm64
+      - run: bazel build //app/ios:FastverkConsole --platforms=//app/ios:ios_sim_arm64
 
   buildifier:
     name: buildifier lint

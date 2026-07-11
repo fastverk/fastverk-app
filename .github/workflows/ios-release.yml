@@ -70,7 +70,7 @@ jobs:
           # rules_apple codesigns the ios_application when a provisioning profile
           # + signing identity are available; produce the arm64 device slice.
           bazel build //app/ios:FastverkConsole \
-            --ios_multi_cpus=arm64 \
+            --platforms=//app/ios:ios_arm64 \
             --apple_generate_dsym
           cp "bazel-bin/app/ios/FastverkConsole.ipa" "$RUNNER_TEMP/FastverkConsole.ipa"
 
