@@ -55,47 +55,52 @@ struct ShellNavView: View {
         case let .ready(tree):
             List(selection: $selection) {
                 ForEach(tree.roots) { root in
-                    section(for: root)
+                    if root.isLeaf {
+                        // A built-in / LayoutService-less plugin: a single row.
+                        NavNodeView(node: root, plugin: root.id)
+                    } else {
+                        // A plugin section: its own nav subtree.
+                        Section(root.label) {
+                            ForEach(root.children ?? []) { child in
+                                NavNodeView(node: child, plugin: root.id)
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
 
-    /// A top-level root: a section of leaves (plugin with its own nav) or, when
-    /// it's a flat leaf itself (a built-in / LayoutService-less plugin), a single
-    /// selectable row.
-    @ViewBuilder
-    private func section(for root: NavNode) -> some View {
-        if root.isLeaf {
-            leafRow(root, plugin: root.id)
-        } else {
-            Section(root.label) {
-                ForEach(root.children ?? []) { child in
-                    node(child, plugin: root.id)
-                }
-            }
-        }
+/// One nav node within a plugin section — a selectable leaf row or a nested
+/// disclosure. A dedicated `View` struct (not a recursive `@ViewBuilder`
+/// function) so the recursion is over a named type, which the compiler allows;
+/// a recursive function returning `some View` would define its opaque type in
+/// terms of itself and fail to compile.
+struct NavNodeView: View {
+    let node: NavNode
+    let plugin: String
+    @State private var expanded: Bool
+
+    init(node: NavNode, plugin: String) {
+        self.node = node
+        self.plugin = plugin
+        _expanded = State(initialValue: node.defaultOpen ?? true)
     }
 
-    /// A nav node within a plugin section: a leaf row or a nested disclosure.
-    @ViewBuilder
-    private func node(_ node: NavNode, plugin: String) -> some View {
+    var body: some View {
         if node.isLeaf {
-            leafRow(node, plugin: plugin)
+            Label(node.label, systemImage: node.icon ?? "doc.text")
+                .badge(node.badge.flatMap { $0.isEmpty ? nil : Text($0) })
+                .tag(PanelRef(plugin: plugin, panelId: node.panelId ?? node.id, title: node.label))
         } else {
-            DisclosureGroup(isExpanded: .constant(node.defaultOpen ?? true)) {
+            DisclosureGroup(isExpanded: $expanded) {
                 ForEach(node.children ?? []) { child in
-                    self.node(child, plugin: plugin)
+                    NavNodeView(node: child, plugin: plugin)
                 }
             } label: {
                 Label(node.label, systemImage: node.icon ?? "folder")
             }
         }
-    }
-
-    private func leafRow(_ node: NavNode, plugin: String) -> some View {
-        Label(node.label, systemImage: node.icon ?? "doc.text")
-            .badge(node.badge.flatMap { $0.isEmpty ? nil : Text($0) })
-            .tag(PanelRef(plugin: plugin, panelId: node.panelId ?? node.id, title: node.label))
     }
 }
