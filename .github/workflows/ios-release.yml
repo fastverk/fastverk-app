@@ -68,10 +68,13 @@ jobs:
         if: ${{ env.HAS_SIGNING == 'true' }}
         run: |
           set -euo pipefail
-          # rules_apple codesigns the ios_application when a provisioning profile
-          # + signing identity are available; produce the arm64 device slice.
+          # --platforms makes the top-level target iOS-compatible; --ios_multi_cpus
+          # is what tells rules_apple's signing logic this is a *device* build, so
+          # it embeds embedded.mobileprovision (without it, --platforms alone signed
+          # as a simulator build → no profile embedded → altool 90174).
           bazel build //app/ios:FastverkConsole \
             --platforms=//app/ios:ios_arm64 \
+            --ios_multi_cpus=arm64 \
             --apple_generate_dsym
           cp "bazel-bin/app/ios/FastverkConsole.ipa" "$RUNNER_TEMP/FastverkConsole.ipa"
 
