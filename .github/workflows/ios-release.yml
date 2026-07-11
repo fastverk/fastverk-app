@@ -72,9 +72,13 @@ jobs:
           # is what tells rules_apple's signing logic this is a *device* build, so
           # it embeds embedded.mobileprovision (without it, --platforms alone signed
           # as a simulator build → no profile embedded → altool 90174).
+          # -c opt: an optimized release build, and it makes rules_apple sign with
+          # get-task-allow=false (the default fastbuild sets it true for debugging,
+          # which the App Store profile rejects — altool 90164).
           bazel build //app/ios:FastverkConsole \
             --platforms=//app/ios:ios_arm64 \
             --ios_multi_cpus=arm64 \
+            --compilation_mode=opt \
             --apple_generate_dsym
           cp "bazel-bin/app/ios/FastverkConsole.ipa" "$RUNNER_TEMP/FastverkConsole.ipa"
 
