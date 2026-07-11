@@ -8,7 +8,7 @@
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>0.0.1</string>
   <key>CFBundleShortVersionString</key><string>0.0.1</string>
-  <key>MinimumOSVersion</key><string>17.0</string>
+  <key>MinimumOSVersion</key><string>17.4</string>
   <!-- Empty launch screen dict: full-screen on every device (no letterboxing). -->
   <key>UILaunchScreen</key><dict/>
   <!-- Custom scheme for the Cognito OAuth redirect (fastverk://auth/callback),

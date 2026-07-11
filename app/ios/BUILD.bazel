@@ -67,8 +67,10 @@ ios_application(
         "ipad",
     ],
     infoplists = ["Info.plist"],
-    # Matches the renderer's iOS-17 APIs (ContentUnavailableView, TableColumnForEach).
-    minimum_os_version = "17.0",
+    # 17.4 because meridian's TablePanelView renders dynamic columns via
+    # TableColumnForEach, which is iOS 17.4+ (Swift type-checks the wide-table
+    # branch even though iPhone/compact uses the List fork at runtime).
+    minimum_os_version = "17.4",
     tags = ["manual"],
     deps = [":FastverkConsoleLib"],
 )
