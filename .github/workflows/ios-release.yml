@@ -8,8 +8,6 @@ name: ios-release
 # Required repo secrets (Settings → Secrets and variables → Actions):
 #   IOS_DIST_CERT_P12         base64 of the "Apple Distribution" .p12
 #   IOS_DIST_CERT_PASSWORD    the .p12 export password
-#   IOS_PROVISIONING_PROFILE  base64 of the App Store provisioning profile for
-#                             com.fastverk.console
 #   AC_API_KEY_P8             base64 of the App Store Connect API key (.p8)  [reused]
 #   AC_API_KEY_ID             the key id                                     [reused]
 #   AC_API_ISSUER_ID          the issuer id                                  [reused]
@@ -44,12 +42,15 @@ jobs:
           disk-cache: ${{ github.workflow }}-macos-ios
           repository-cache: true
 
-      - name: import signing cert + provisioning profile
+      # Import the Apple Distribution identity into an ephemeral keychain so
+      # rules_apple's codesign can find it. The provisioning profile itself is
+      # committed (app/ios/Fastverk_Console_App_Store.mobileprovision) and
+      # embedded by the ios_application rule, so it isn't installed here.
+      - name: import signing identity
         if: ${{ env.HAS_SIGNING == 'true' }}
         env:
           CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
           CERT_PW: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
-          PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
           KEYCHAIN_PW: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
@@ -61,10 +62,6 @@ jobs:
           security import "$RUNNER_TEMP/dist.p12" -k "$KC" -P "$CERT_PW" -T /usr/bin/codesign
           security list-keychains -d user -s "$KC" "$(security default-keychain | tr -d ' \"')"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KC"
-          # Install the provisioning profile where Xcode/codesign looks for it.
-          PROFILES="$HOME/Library/MobileDevice/Provisioning Profiles"
-          mkdir -p "$PROFILES"
-          echo "$PROFILE" | base64 --decode > "$PROFILES/fastverk-console.mobileprovision"
           rm -f "$RUNNER_TEMP/dist.p12"
 
       - name: build signed .ipa (device slice)
@@ -96,7 +93,7 @@ jobs:
         if: ${{ env.HAS_SIGNING != 'true' }}
         run: |
           echo "::notice::iOS signing secrets not set — skipping the signed .ipa build."
-          echo "Add IOS_DIST_CERT_P12 / IOS_DIST_CERT_PASSWORD / IOS_PROVISIONING_PROFILE to enable TestFlight uploads."
+          echo "Add IOS_DIST_CERT_P12 / IOS_DIST_CERT_PASSWORD to enable TestFlight uploads."
 
       # iOS ships via TestFlight (not a direct download), so its CDN presence is
       # the download landing page's TestFlight entry — refresh it on each iOS

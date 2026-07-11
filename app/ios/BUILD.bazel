@@ -46,6 +46,15 @@ platform(
     ],
 )
 
+# True on a device build (ios_arm64). Used to attach the App Store provisioning
+# profile only when signing for a device — a simulator build isn't signed, and
+# forcing a profile onto it would fail. The profile has no private key (safe to
+# commit); the signing identity comes from the keychain (the CI-imported .p12).
+config_setting(
+    name = "device_build",
+    constraint_values = ["@build_bazel_apple_support//constraints:device"],
+)
+
 swift_library(
     name = "FastverkConsoleLib",
     srcs = glob(["Sources/**/*.swift"]),
@@ -71,6 +80,11 @@ ios_application(
     # TableColumnForEach, which is iOS 17.4+ (Swift type-checks the wide-table
     # branch even though iPhone/compact uses the List fork at runtime).
     minimum_os_version = "17.4",
+    # Sign for the App Store on device builds; unset on simulator (no signing).
+    provisioning_profile = select({
+        ":device_build": "Fastverk_Console_App_Store.mobileprovision",
+        "//conditions:default": None,
+    }),
     tags = ["manual"],
     deps = [":FastverkConsoleLib"],
 )
