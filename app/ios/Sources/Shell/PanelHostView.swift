@@ -13,12 +13,19 @@ struct PanelHostView: View {
     @State private var state: PanelState?
 
     var body: some View {
-        content
-            .navigationTitle(ref.title)
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .task(id: ref) { state = model.panelState(for: ref) }
+        // Bespoke native panels hook in here — surfaces whose interactions can't
+        // be expressed as meridian descriptors. The agents panel is the first:
+        // Dispatch isn't a panel and Cancel is a per-row {run_id} action.
+        if ref.plugin == "agents", ref.panelId == "agents" {
+            AgentsView(auth: model.auth)
+        } else {
+            content
+                .navigationTitle(ref.title)
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .task(id: ref) { state = model.panelState(for: ref) }
+        }
     }
 
     @ViewBuilder
