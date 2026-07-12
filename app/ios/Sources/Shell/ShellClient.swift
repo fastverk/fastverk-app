@@ -1,7 +1,11 @@
-// ShellClient — the HTTP surface of the cloud console the iOS host consumes:
-// the server-driven nav (`/api/shell`), per-panel bundles (`/api/shell/panel`),
-// and the plugin route table (`/api/plugins` + each `/api/gw/<id>/describe`).
-// All calls carry the Cognito Bearer id_token; codes are mapped per shell.rs.
+// ShellClient — the HTTP surface of the cloud console the iOS host consumes.
+//
+// Panels come from each plugin's STATIC bundle (`/api/gw/<plugin>/panels.binpb`),
+// composed client-side exactly like the web's `loadPluginSection` — NOT from the
+// server-driven `/api/shell/panel` (LayoutService.GetPanel), which 404s
+// ("no gRPC LayoutService") because no plugin implements that optional tier yet.
+// `/api/shell` is used only for the section order + entitlement gating. All calls
+// carry the Cognito Bearer id_token; codes are mapped per shell.rs / gateway.rs.
 
 import Foundation
 import MeridianUI
@@ -24,6 +28,12 @@ enum ShellError: Error, CustomStringConvertible {
     }
 }
 
+/// A plugin's describe manifest, reduced to what the console needs.
+struct PluginManifest: Sendable {
+    var displayName: String
+    var routes: [(key: String, route: Route)]
+}
+
 struct ShellClient: Sendable {
     let base: URL
     let auth: AuthService
@@ -31,6 +41,8 @@ struct ShellClient: Sendable {
 
     // MARK: - Endpoints
 
+    /// The server-driven nav — used for the section order + which plugins the
+    /// caller is entitled to. Panels themselves come from the static bundles.
     func fetchShell() async throws -> NavTree {
         let data = try await get(path: "/api/shell", accept: "application/json")
         do {
@@ -40,14 +52,18 @@ struct ShellClient: Sendable {
         }
     }
 
-    /// A single panel resolved server-side (LayoutService.GetPanel), returned as
-    /// a serialized meridian.ui.v1.PanelBundle — the exact bytes BundleLoader
-    /// already decodes.
-    func fetchPanelBundle(plugin: String, panelId: String) async throws -> PanelBundle {
-        let data = try await get(
-            path: "/api/shell/panel/\(plugin)/\(panelId)",
-            accept: "application/octet-stream"
-        )
+    /// The boot-time plugin set (fallback ordering when /api/shell is unavailable).
+    func fetchPlugins() async throws -> [String] {
+        let data = try await get(path: "/api/plugins", accept: "application/json")
+        let json = try JSONValue.parse(data)
+        return json["plugins"].asArray?.compactMap { $0.asString } ?? []
+    }
+
+    /// A plugin's static PanelBundle (`/api/gw/<plugin>/panels.binpb`) — the same
+    /// serialized meridian.ui.v1.PanelBundle the web decodes, consumed by the
+    /// existing `BundleLoader`.
+    func pluginBundle(plugin: String) async throws -> PanelBundle {
+        let data = try await get(path: "/api/gw/\(plugin)/panels.binpb", accept: "application/octet-stream")
         do {
             return try BundleLoader.decode(data)
         } catch {
@@ -55,42 +71,22 @@ struct ShellClient: Sendable {
         }
     }
 
-    func fetchPlugins() async throws -> [String] {
-        let data = try await get(path: "/api/plugins", accept: "application/json")
-        let json = try JSONValue.parse(data)
-        return json["plugins"].asArray?.compactMap { $0.asString } ?? []
-    }
-
-    /// Build the (service/method) -> Route table from every plugin's describe
-    /// manifest (mirrors main.js registerRoutes). Per-plugin failures are
-    /// tolerated — an unreachable plugin just contributes no routes.
-    func fetchRoutes(plugins: [String]) async throws -> RouteTable {
-        var table: RouteTable = [:]
-        await withTaskGroup(of: [(String, Route)].self) { group in
-            for plugin in plugins {
-                group.addTask { (try? await routes(for: plugin)) ?? [] }
-            }
-            for await entries in group {
-                for (key, route) in entries { table[key] = route }
-            }
-        }
-        return table
-    }
-
-    // MARK: - Route manifest parsing
-
-    // NOTE: verify the describe manifest shape against a live response — the web
-    // reads `manifest.web_routes: [{service, method, path, http_method}]`. We
-    // parse defensively (top-level or nested, snake/camel verb key).
-    private func routes(for plugin: String) async throws -> [(String, Route)] {
+    /// A plugin's describe manifest: its display name + the (service/method) ->
+    /// gateway-route table the NetworkRpcInvoker uses (mirrors main.js
+    /// registerRoutes). Shape verified live: `{ manifest: { display_name,
+    /// web_routes: [{service, method, path, http_method}] } }`.
+    func manifest(plugin: String) async throws -> PluginManifest {
         let data = try await get(path: "/api/gw/\(plugin)/describe", accept: "application/json")
         let json = try JSONValue.parse(data)
+        let manifest = json["manifest"]
+        let displayName = manifest["display_name"].asString ?? plugin
+
         let list: [JSONValue]
-        if case let .array(a) = json["manifest"]["web_routes"] { list = a }
+        if case let .array(a) = manifest["web_routes"] { list = a }
         else if case let .array(a) = json["web_routes"] { list = a }
         else { list = [] }
 
-        return list.compactMap { entry in
+        let routes: [(key: String, route: Route)] = list.compactMap { entry in
             guard let service = entry["service"].asString,
                   let method = entry["method"].asString,
                   let path = entry["path"].asString else { return nil }
@@ -98,8 +94,9 @@ struct ShellClient: Sendable {
                 ?? entry["httpMethod"].asString
                 ?? entry["verb"].asString
                 ?? "GET"
-            return ("\(service)/\(method)", Route(verb: verb, rest: path))
+            return (key: "\(service)/\(method)", route: Route(verb: verb, rest: path))
         }
+        return PluginManifest(displayName: displayName, routes: routes)
     }
 
     // MARK: - Transport

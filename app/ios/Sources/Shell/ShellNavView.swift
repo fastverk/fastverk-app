@@ -1,8 +1,7 @@
-// ShellNavView — the top-level console: a sidebar built from the server NavTree
-// and a detail pane rendering the selected panel. NavigationSplitView adapts on
-// its own (two columns on iPad / regular width, a push stack on iPhone), so the
-// same tree drives both. Each root is a plugin section; a leaf's owning plugin
-// is its ancestor root's id (used to route the panel's RPCs).
+// ShellNavView — the top-level console: a sidebar of plugin sections (each a
+// plugin's static-bundle panels) and a detail pane rendering the selected panel.
+// NavigationSplitView adapts on its own (two columns on iPad / a push stack on
+// iPhone). A leaf's plugin is its section's plugin (used to route the panel's RPCs).
 
 import SwiftUI
 import MeridianUI
@@ -43,7 +42,7 @@ struct ShellNavView: View {
     private var sidebar: some View {
         switch model.phase {
         case .loading:
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            ProgressView("Loading the console…").frame(maxWidth: .infinity, maxHeight: .infinity)
         case let .failed(message):
             ContentUnavailableView {
                 Label("Couldn't load the console", systemImage: "exclamationmark.triangle")
@@ -52,54 +51,17 @@ struct ShellNavView: View {
             } actions: {
                 Button("Retry") { Task { await model.load() } }
             }
-        case let .ready(tree):
+        case let .ready(sections):
             List(selection: $selection) {
-                ForEach(tree.roots) { root in
-                    if root.isLeaf {
-                        // A built-in / LayoutService-less plugin: a single row.
-                        NavNodeView(node: root, plugin: root.id)
-                    } else {
-                        // A plugin section: its own nav subtree.
-                        Section(root.label) {
-                            ForEach(root.children ?? []) { child in
-                                NavNodeView(node: child, plugin: root.id)
-                            }
+                ForEach(sections) { section in
+                    Section(section.title) {
+                        ForEach(section.panels) { panel in
+                            let title = panel.title.isEmpty ? panel.panelID : panel.title
+                            Label(title, systemImage: "tablecells")
+                                .tag(PanelRef(plugin: section.plugin, panelId: panel.panelID, title: title))
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-/// One nav node within a plugin section — a selectable leaf row or a nested
-/// disclosure. A dedicated `View` struct (not a recursive `@ViewBuilder`
-/// function) so the recursion is over a named type, which the compiler allows;
-/// a recursive function returning `some View` would define its opaque type in
-/// terms of itself and fail to compile.
-struct NavNodeView: View {
-    let node: NavNode
-    let plugin: String
-    @State private var expanded: Bool
-
-    init(node: NavNode, plugin: String) {
-        self.node = node
-        self.plugin = plugin
-        _expanded = State(initialValue: node.defaultOpen ?? true)
-    }
-
-    var body: some View {
-        if node.isLeaf {
-            Label(node.label, systemImage: node.icon ?? "doc.text")
-                .badge(node.badge.flatMap { $0.isEmpty ? nil : Text($0) })
-                .tag(PanelRef(plugin: plugin, panelId: node.panelId ?? node.id, title: node.label))
-        } else {
-            DisclosureGroup(isExpanded: $expanded) {
-                ForEach(node.children ?? []) { child in
-                    NavNodeView(node: child, plugin: plugin)
-                }
-            } label: {
-                Label(node.label, systemImage: node.icon ?? "folder")
             }
         }
     }

@@ -6,7 +6,7 @@
   <key>CFBundleName</key><string>fastverk</string>
   <key>CFBundleDisplayName</key><string>fastverk</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleVersion</key><string>2</string>
+  <key>CFBundleVersion</key><string>3</string>
   <key>CFBundleShortVersionString</key><string>0.0.1</string>
   <key>MinimumOSVersion</key><string>17.4</string>
   <!-- 64-bit-only binary: App Store requires arm64 declared here. -->
