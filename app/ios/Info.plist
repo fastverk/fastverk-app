@@ -6,7 +6,7 @@
   <key>CFBundleName</key><string>fastverk</string>
   <key>CFBundleDisplayName</key><string>fastverk</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleVersion</key><string>6</string>
+  <key>CFBundleVersion</key><string>7</string>
   <key>CFBundleShortVersionString</key><string>0.0.1</string>
   <!-- Only standard HTTPS/TLS + Keychain (exempt encryption) → declare no
        non-exempt encryption so TestFlight doesn't gate on export compliance. -->
