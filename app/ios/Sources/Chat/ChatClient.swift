@@ -53,11 +53,11 @@ struct ChatClient: Sendable {
             return try await send(message: trimmed, retryOn401: false)
         }
         guard (200..<300).contains(code) else {
-            throw ChatError.http(code, message(data))
+            throw ChatError.http(code, errorMessage(data))
         }
     }
 
-    private func message(_ data: Data) -> String {
+    private func errorMessage(_ data: Data) -> String {
         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if let m = obj["message"] as? String { return m }
             if let e = obj["error"] as? String { return e }

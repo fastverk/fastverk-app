@@ -95,7 +95,7 @@ struct EventStream: Sendable {
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401, retryOn401 {
             _ = try await auth.refreshedIdToken()
-            return try await run(path: path, query: query, retryOn401: false, into: continuation)
+            return try await run(path: path, query: query, lastEventID: lastEventID, retryOn401: false, into: continuation)
         }
         if code == 401 { throw SSEError.unauthorized }
         guard (200..<300).contains(code) else { throw SSEError.http(code) }
