@@ -13,6 +13,7 @@ enum Sidebar: Hashable {
     case panel(PanelRef)
     case assistant
     case fleet
+    case integrations
 }
 
 struct ShellNavView: View {
@@ -34,6 +35,8 @@ struct ShellNavView: View {
                         .tag(Sidebar.assistant)
                     Label("Fleet", systemImage: "point.3.connected.trianglepath.dotted")
                         .tag(Sidebar.fleet)
+                    Label("Integrations", systemImage: "puzzlepiece.extension")
+                        .tag(Sidebar.integrations)
                 }
                 pluginSections
             }
@@ -56,6 +59,8 @@ struct ShellNavView: View {
             AssistantView(auth: auth)
         case .fleet:
             FleetView(auth: auth)
+        case .integrations:
+            IntegrationsView(auth: auth)
         case let .panel(ref):
             PanelHostView(model: model, ref: ref)
         case nil:
