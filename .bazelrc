@@ -6,6 +6,15 @@ common --experimental_isolated_extension_usages
 common --registry=https://registry.tbzl.dev/
 common --registry=https://bcr.bazel.build/
 
+# ─── hermetic_cc_toolchain (zig cc) sandbox mount ─────────────────────────────
+common --enable_platform_specific_config
+build:macos --sandbox_add_mount_pair=/var/tmp
+build:linux --sandbox_add_mount_pair=/tmp
+
+# ─── section GC (Linux/zig only) — protobuf upb linkarr pattern ───────────────
+build:linux --host_linkopt=-Wl,--no-gc-sections
+build:linux --linkopt=-Wl,--no-gc-sections
+
 common --action_env=HOME
 
 # Stamp the real version into the binaries (fvkit's lib reads
