@@ -3,8 +3,17 @@ common --experimental_isolated_extension_usages
 
 # Resolve @fvkit (and its transitive deps) from the fastverk registry first,
 # then fall back to the Bazel Central Registry for everything else.
-common --registry=https://raw.githubusercontent.com/fastverk/bazel-registry/main/
+common --registry=https://registry.tbzl.dev/
 common --registry=https://bcr.bazel.build/
+
+# ─── hermetic_cc_toolchain (zig cc) sandbox mount ─────────────────────────────
+common --enable_platform_specific_config
+build:macos --sandbox_add_mount_pair=/var/tmp
+build:linux --sandbox_add_mount_pair=/tmp
+
+# ─── section GC (Linux/zig only) — protobuf upb linkarr pattern ───────────────
+build:linux --host_linkopt=-Wl,--no-gc-sections
+build:linux --linkopt=-Wl,--no-gc-sections
 
 common --action_env=HOME
 
