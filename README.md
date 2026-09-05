@@ -1,3 +1,18 @@
+> [!IMPORTANT]
+> **This repository is retired.** `fastverk-app` is developed in the
+> [`fastverk/desktop`](https://github.com/fastverk/desktop) ship vehicle, at
+> [`fastverk-app/`](https://github.com/fastverk/desktop/tree/main/fastverk-app).
+> Open issues and pull requests there.
+>
+> The published module is unchanged — `bazel_dep(name = "fastverk-app", version = "0.0.2")`
+> resolves exactly as before. This remote keeps its full history and every tag,
+> including the `ios-v*` line, so existing registry entries and `git_override`
+> pins stay valid.
+>
+> Retired at [`985a7a0`](https://github.com/fastverk/fastverk-app/commit/985a7a0feee08a95e92331418a0c0f2eb28b6ed6),
+> the commit the vehicle imported — nothing here is unimported. Background:
+> [Consolidation](https://docs.fastverk.com/consolidation.html).
+
 # fastverk-app
 
 The fastverk macOS desktop app and the daemon-aware Bazel credential helper.
